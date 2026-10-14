@@ -27,11 +27,15 @@ function applyOptimistic(device: Device, command: Command): Device {
   return { ...device, state }
 }
 
+function keyOf(device: Pick<Device, 'driverId' | 'id'>): string {
+  return `${device.driverId}:${device.id}`
+}
+
 export interface DevicesApi {
   devices: Device[]
   statuses: DriverStatus[]
   loading: boolean
-  /** Aparelhos com comando em voo. */
+  /** Aparelhos com comando em voo, usando driverId:id. */
   pending: ReadonlySet<string>
   error: string | null
   refresh: () => Promise<void>
@@ -81,9 +85,10 @@ export function useDevices(enabled: boolean, revision = 0, driverId?: string): D
 
   const send = useCallback(async (device: Device, command: Command) => {
     const context = contextId.current
+    const key = keyOf(device)
     const optimistic = applyOptimistic(device, command)
-    setDevices((current) => current.map((item) => (item.id === device.id ? optimistic : item)))
-    setPending((current) => new Set(current).add(device.id))
+    setDevices((current) => current.map((item) => (keyOf(item) === key ? optimistic : item)))
+    setPending((current) => new Set(current).add(key))
     setError(null)
 
     const result = await window.home.sendCommand({
@@ -97,12 +102,12 @@ export function useDevices(enabled: boolean, revision = 0, driverId?: string): D
 
     setDevices((current) =>
       current.map((item) =>
-        item.id === device.id ? (result.ok ? result.data : device) : item
+        keyOf(item) === key ? (result.ok ? result.data : device) : item
       )
     )
     setPending((current) => {
       const next = new Set(current)
-      next.delete(device.id)
+      next.delete(key)
       return next
     })
     if (!result.ok) setError(result.error)

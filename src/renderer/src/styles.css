@@ -716,101 +716,14 @@ input {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 15px;
-  margin-bottom: 20px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  background: rgba(255, 107, 107, 0.09);
-  font-size: 13px;
-  color: #ffc9c9;
-}
-
-.alert button {
-  margin-left: auto;
-  color: inherit;
-  opacity: 0.6;
-}
-
-.alert button:hover {
-  opacity: 1;
-}
-
-/* ── Modal ───────────────────────────────────────────────────────── */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  padding: 30px;
-  background: rgba(4, 5, 8, 0.72);
-  backdrop-filter: blur(10px);
-  animation: fade 0.18s ease;
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-
-.modal {
-  width: min(480px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 28px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-strong);
-  background: #11131a;
-  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 1);
-  animation: rise 0.24s var(--ease);
-}
-
-@keyframes rise {
-  from {
-    transform: translateY(14px) scale(0.98);
-  }
-  to {
-    transform: none;
-  }
-}
-
-.modal h2 {
-  font-size: 18px;
-  font-weight: 620;
-  margin-bottom: 5px;
-}
-
-.modal > p {
-  color: var(--muted);
-  font-size: 13px;
-  margin-bottom: 22px;
-}
-
-.field {
-  margin-bottom: 16px;
-}
-
-.field label {
-  display: block;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 6px;
-}
-
 .field input {
   width: 100%;
   padding: 11px 13px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font: inherit;
   transition: border-color 0.18s, background 0.18s;
 }
 
@@ -867,6 +780,34 @@ input {
 :focus-visible {
   outline: 2px solid var(--cool-a);
   outline-offset: 2px;
+}
+
+
+/* ── Modais flutuantes ─────────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 70% 28%, rgba(68, 224, 255, 0.14), transparent 34%),
+    rgba(3, 5, 9, 0.62);
+  backdrop-filter: blur(18px);
+}
+
+.modal {
+  width: min(620px, 100%);
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(160deg, rgba(22, 28, 42, 0.96), rgba(8, 11, 18, 0.96));
+  box-shadow: 0 34px 120px -44px rgba(0, 0, 0, 0.95);
 }
 
 /* Integrações e preferências */
@@ -1095,4 +1036,766 @@ input {
 .modal > p,
 .modal > form > .field {
   margin-top: 8px;
+}
+
+/* ── Cômodos 3D ─────────────────────────────────────────────────── */
+.rooms-page {
+  display: grid;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.rooms-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: flex-end;
+}
+
+.rooms-hero h1 {
+  max-width: 760px;
+  font-size: clamp(28px, 4vw, 50px);
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+  font-weight: 760;
+}
+
+.rooms-hero p {
+  max-width: 600px;
+  color: var(--muted);
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.rooms-hero__actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.room-alert {
+  margin: 0;
+}
+
+.room-tabs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.room-tab {
+  min-width: 136px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.room-tab.is-active {
+  color: var(--text);
+  border-color: rgba(68, 224, 255, 0.34);
+  background: linear-gradient(135deg, rgba(68, 224, 255, 0.14), rgba(111, 123, 255, 0.08));
+}
+
+.room-tab small {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.room-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 18px;
+  align-items: stretch;
+  min-height: min(660px, calc(100vh - 230px));
+}
+
+.room-stage-card,
+.room-panel {
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.022));
+  border-radius: 30px;
+  box-shadow: 0 28px 80px -42px #000;
+  overflow: hidden;
+}
+
+.room-stage-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr);
+}
+
+.room-stage-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px 0;
+  position: relative;
+  z-index: 2;
+}
+
+.room-stage-card__meta h2 {
+  font-size: 24px;
+  letter-spacing: -0.035em;
+  margin-top: 8px;
+}
+
+.room-stage-card__meta p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.modal__kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--faint);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.modal__kicker span + span::before {
+  content: '•';
+  margin-right: 8px;
+  color: var(--cool-a);
+}
+
+.room-weather {
+  width: 86px;
+  height: 86px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border-radius: 24px;
+  background: rgba(68, 224, 255, 0.08);
+  border: 1px solid rgba(68, 224, 255, 0.18);
+}
+
+.room-weather strong {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.room-weather span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.room-stage {
+  position: relative;
+  min-height: 0;
+}
+
+.room-scene {
+  position: absolute;
+  inset: 8px 8px 0;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 176, 58, 0.12), transparent 30%),
+    radial-gradient(circle at 78% 20%, rgba(68, 224, 255, 0.16), transparent 36%),
+    linear-gradient(180deg, rgba(19, 29, 39, 0.52), rgba(6, 8, 12, 0.18));
+  perspective: 1300px;
+}
+
+.room-shadow {
+  position: absolute;
+  left: 20%;
+  right: 10%;
+  bottom: 6%;
+  height: 20%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.46), transparent 68%);
+  filter: blur(16px);
+}
+
+.room-object {
+  position: absolute;
+  z-index: 4;
+  width: 78px;
+  height: 104px;
+  transform-style: preserve-3d;
+  color: var(--text);
+  outline: none;
+}
+
+.room-object::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 62px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  filter: blur(4px);
+  transform: translateX(-50%);
+}
+
+.room-object.is-selected .room-object__label,
+.room-object:focus-visible .room-object__label {
+  opacity: 1;
+  transform: translate(-50%, -8px);
+}
+
+.room-object.is-selected {
+  filter: drop-shadow(0 0 16px rgba(68, 224, 255, 0.42));
+}
+
+.room-object__label {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  z-index: 5;
+  white-space: nowrap;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(8, 12, 18, 0.84);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 11px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  transition: opacity 0.18s, transform 0.18s;
+}
+
+.light-halo {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--device-glow), transparent 66%);
+  opacity: 0;
+  filter: blur(6px);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.25s;
+}
+
+.room-object--light.is-on .light-halo {
+  opacity: 0.42;
+}
+
+.lamp-shade {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  width: 44px;
+  height: 30px;
+  border-radius: 22px 22px 10px 10px;
+  background: linear-gradient(180deg, #fff1c7, #c99658);
+  transform: translateX(-50%);
+  box-shadow: inset 0 -7px 14px color-mix(in srgb, var(--device-glow), transparent 60%);
+}
+
+.lamp-stem {
+  position: absolute;
+  left: calc(50% - 2px);
+  top: 48px;
+  width: 4px;
+  height: 42px;
+  border-radius: 999px;
+  background: #3e4650;
+}
+
+.lamp-base {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 42px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2d333b;
+  transform: translateX(-50%);
+}
+
+.room-object--desk {
+  height: 76px;
+}
+
+.room-object--desk .lamp-stem { height: 24px; }
+.room-object--desk .lamp-base { bottom: 9px; width: 36px; }
+
+.room-object--ac {
+  width: 124px;
+  height: 64px;
+}
+
+.ac-unit {
+  position: absolute;
+  inset: 8px 6px 22px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f6f8f9, #bdc8d0);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.26), inset 0 -10px 18px rgba(67, 81, 91, 0.2);
+}
+
+.ac-unit span {
+  position: absolute;
+  bottom: 7px;
+  width: 20%;
+  height: 2px;
+  border-radius: 999px;
+  background: #6e808d;
+}
+
+.ac-unit span:nth-child(1) { left: 18%; }
+.ac-unit span:nth-child(2) { left: 42%; }
+.ac-unit span:nth-child(3) { right: 18%; }
+
+.cold-wash {
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: 0;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at top, rgba(68, 224, 255, 0.42), transparent 70%);
+  opacity: 0;
+  filter: blur(3px);
+}
+
+.room-object--ac.is-on .cold-wash {
+  opacity: 1;
+}
+
+.room-toolbar {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(7, 8, 12, 0.68);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+}
+
+.room-toolbar button {
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-toolbar button.is-active,
+.room-toolbar button:hover {
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
+.room-hint {
+  position: absolute;
+  left: 22px;
+  bottom: 28px;
+  z-index: 5;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(7, 8, 12, 0.54);
+  border: 1px solid var(--border);
+}
+
+.room-hint span {
+  color: var(--cool-a);
+}
+
+.empty-room-callout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  width: 280px;
+  display: grid;
+  gap: 9px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(8, 12, 18, 0.86);
+  border: 1px solid var(--border-strong);
+  transform: translate(-50%, -50%) rotateZ(36deg) rotateX(-58deg);
+  text-align: center;
+}
+
+.empty-room-callout span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-panel {
+  padding: 20px;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.room-panel__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.room-panel__head h3 {
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+
+.room-panel__head > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--cool-a);
+  background: rgba(68, 224, 255, 0.08);
+  border: 1px solid rgba(68, 224, 255, 0.16);
+}
+
+.room-device-list {
+  display: grid;
+  gap: 9px;
+}
+
+.room-device-list button {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+  transition: background 0.16s, border-color 0.16s, transform 0.16s;
+}
+
+.room-device-list button:hover,
+.room-device-list button.is-selected {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-strong);
+}
+
+.room-device-list button:active {
+  transform: scale(0.985);
+}
+
+.room-device-list strong,
+.room-device-list small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-device-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: radial-gradient(circle at 50% 35%, var(--device-glow), rgba(255, 255, 255, 0.06) 62%);
+}
+
+.device-dot--air-conditioner {
+  background: linear-gradient(135deg, rgba(68, 224, 255, 0.34), rgba(111, 123, 255, 0.16));
+}
+
+.room-panel__empty,
+.room-editor p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.room-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.room-editor .field {
+  margin: 0;
+}
+
+.room-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.room-palette span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-modal-layer {
+  z-index: 120;
+  place-items: stretch end;
+  padding: 74px 28px 28px;
+  background:
+    linear-gradient(90deg, rgba(3, 5, 9, 0.08), rgba(3, 5, 9, 0.48)),
+    radial-gradient(circle at 72% 38%, rgba(68, 224, 255, 0.16), transparent 32%);
+  backdrop-filter: blur(6px);
+}
+
+.room-device-modal {
+  width: min(460px, calc(100vw - 56px));
+  max-height: calc(100vh - 102px);
+  align-self: stretch;
+  padding: 24px;
+  border-radius: 26px;
+  animation: room-device-panel-in 0.24s var(--ease);
+}
+
+@keyframes room-device-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.room-device-modal__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 18px;
+}
+
+.room-device-modal__head h2 {
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.room-device-modal__head p,
+.room-device-modal__empty {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.room-device-modal__close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.room-device-modal__close:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.room-power-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  margin-bottom: 16px;
+}
+
+.room-power-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── Cômodos 3D com Three.js ─────────────────────────────────────── */
+.room-layout--3d {
+  grid-template-columns: minmax(0, 1fr) 310px;
+}
+
+.room-stage-card--3d {
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr);
+  min-height: 560px;
+}
+
+.room-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 0 0 28px 28px;
+  overflow: hidden;
+}
+
+.room-canvas-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+}
+
+.room-canvas-toolbar {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(7, 8, 12, 0.72);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+}
+
+.room-canvas-toolbar .btn--small {
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.room-canvas-hint {
+  display: flex;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.room-canvas-hint span {
+  position: relative;
+  padding-left: 10px;
+}
+
+.room-canvas-hint span::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cool-a);
+  transform: translateY(-50%);
+}
+
+.room-canvas-hint span + span::before {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.device-dot {
+  background: radial-gradient(circle at 50% 35%, var(--device-glow, #ffd79a), rgba(255, 255, 255, 0.06) 62%);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.device-dot.is-on {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--device-glow, #ffd79a), transparent 30%);
+  border-color: color-mix(in srgb, var(--device-glow, #ffd79a), transparent 50%);
+}
+
+
+
+
+
+
+/* ── Tooltips 3D (Html do drei) ─────────────────────────────────── */
+.room3d-tooltip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(10, 14, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: room3d-tooltip-in 0.18s ease-out;
+}
+
+.room3d-tooltip strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.room3d-tooltip span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10.5px;
+  text-transform: lowercase;
+}
+
+@keyframes room3d-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+
+@media (max-width: 900px) {
+  .room-layout--3d {
+    grid-template-columns: 1fr;
+  }
+
+  .room-modal-layer {
+    place-items: end stretch;
+    padding: 16px;
+  }
+
+  .room-device-modal {
+    width: 100%;
+    max-height: min(78vh, 720px);
+    align-self: auto;
+    border-radius: 26px 26px 20px 20px;
+    animation: room-device-sheet-in 0.24s var(--ease);
+  }
+
+  @keyframes room-device-sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(28px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
 }

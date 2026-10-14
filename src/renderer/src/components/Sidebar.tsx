@@ -2,11 +2,14 @@ import type { Device, DriverStatus } from '../../../shared/types'
 import type { Integration } from './SettingsModal'
 import { SettingsIcon } from './Icons'
 
+export type AppSection = 'rooms' | Integration
+
 interface Props {
   statuses: DriverStatus[]
   devices: Device[]
+  selectedSection: AppSection
   selectedIntegration: Integration
-  onSelectIntegration: (integration: Integration) => void
+  onSelectSection: (section: AppSection) => void
   onOpenSettings: () => void
 }
 
@@ -16,9 +19,20 @@ function stateInfo(status: DriverStatus): { text: string; variant: string } {
   return { text: 'Configurado', variant: 'ok' }
 }
 
-export function Sidebar({ statuses, devices, selectedIntegration, onSelectIntegration, onOpenSettings }: Props): React.JSX.Element {
+export function Sidebar({ statuses, devices, selectedSection, selectedIntegration, onSelectSection, onOpenSettings }: Props): React.JSX.Element {
   return (
     <aside className="sidebar">
+      <nav aria-label="Minha casa">
+        <div className="sidebar__title">Minha casa</div>
+        <button type="button" className={`integration${selectedSection === 'rooms' ? ' integration--selected' : ''}`}
+          aria-current={selectedSection === 'rooms' ? 'page' : undefined} onClick={() => onSelectSection('rooms')}>
+          <span className="integration__mark" aria-hidden="true">3D</span>
+          <span>
+            <span className="integration__name">Cômodos 3D</span>
+            <span className="integration__state integration__state--ok">Maquete interativa · {devices.length}</span>
+          </span>
+        </button>
+      </nav>
       <nav aria-label="Integrações">
         <div className="sidebar__title">Integrações</div>
         {statuses.map((status) => {
@@ -27,9 +41,9 @@ export function Sidebar({ statuses, devices, selectedIntegration, onSelectIntegr
           const count = devices.filter((device) => device.driverId === status.id).length
           return (
             <button key={status.id} type="button"
-              className={`integration${selectedIntegration === integration ? ' integration--selected' : ''}`}
-              aria-current={selectedIntegration === integration ? 'page' : undefined}
-              onClick={() => onSelectIntegration(integration)} title={status.error}>
+              className={`integration${selectedSection === integration ? ' integration--selected' : ''}`}
+              aria-current={selectedSection === integration ? 'page' : undefined}
+              onClick={() => onSelectSection(integration)} title={status.error}>
               <span className="integration__mark" aria-hidden="true">{status.label.slice(0, 2).toUpperCase()}</span>
               <span>
                 <span className="integration__name">{status.label}</span>

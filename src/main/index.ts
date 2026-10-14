@@ -3,6 +3,19 @@ import { join } from 'node:path'
 import { registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
+const PROFILE_NAME = 'home-control'
+
+/**
+ * Usa um único perfil de usuário por máquina, com o mesmo nome em
+ * desenvolvimento e no instalador. Sem isso, o Electron usa pastas diferentes
+ * para cada um e a conta conectada parece sumir ao alternar entre eles.
+ */
+function configureUserData(): void {
+  app.setName(PROFILE_NAME)
+  app.setPath('userData', join(app.getPath('appData'), PROFILE_NAME))
+}
+
+configureUserData()
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
