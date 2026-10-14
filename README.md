@@ -42,6 +42,11 @@ aceita conta de fora da Coreia.** O caminho que funciona é o QR code.
 O token é guardado pelo `safeStorage` do Electron — DPAPI no Windows. Se o cofre do
 sistema não estiver disponível, o app recusa salvar em vez de gravar em texto puro.
 
+O perfil usado pelo instalador e pelo `npm run dev` é o mesmo: `%APPDATA%\\home-control`.
+O arquivo `config.json` fica nesse perfil do usuário, fora do repositório e da pasta do
+executável; os tokens permanecem cifrados pelo Windows. Na primeira abertura após uma
+versão antiga, o app migra automaticamente um `config.json` legado para esse perfil.
+
 ### O que não funciona
 
 - `thinq.developer.lge.com` — não existe, não resolve.
