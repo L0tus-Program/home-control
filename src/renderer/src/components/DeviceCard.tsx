@@ -1,0 +1,164 @@
+import type { Capability, Command, Device } from '../../../shared/types'
+import { fanLabel, modeLabel, moodFor } from '../labels'
+import { PowerIcon } from './Icons'
+import { TemperatureDial } from './TemperatureDial'
+
+interface Props {
+  device: Device
+  busy: boolean
+  onCommand: (command: Command) => void
+}
+
+function capability<K extends Capability['kind']>(
+  device: Device,
+  kind: K
+): Extract<Capability, { kind: K }> | undefined {
+  return device.capabilities.find((item) => item.kind === kind) as
+    | Extract<Capability, { kind: K }>
+    | undefined
+}
+
+interface SegmentedProps {
+  label: string
+  options: string[]
+  active: string | undefined
+  disabled: boolean
+  format: (value: string) => string
+  onPick: (value: string) => void
+}
+
+function Segmented({
+  label,
+  options,
+  active,
+  disabled,
+  format,
+  onPick
+}: SegmentedProps): React.JSX.Element {
+  return (
+    <div className="control">
+      <div className="control__label">{label}</div>
+      <div className="segmented">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            disabled={disabled}
+            className={option === active ? 'is-active' : undefined}
+            aria-pressed={option === active}
+            onClick={() => onPick(option)}
+          >
+            {format(option)}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Element {
+  const { state } = device
+  const mood = moodFor(state.mode, state.power)
+
+  const temperature = capability(device, 'temperature')
+  const modes = capability(device, 'mode')
+  const fans = capability(device, 'fan')
+  const controllable = device.capabilities.length > 0
+
+  const className = [
+    'card',
+    state.power && 'card--on',
+    busy && 'card--busy',
+    mood === 'heat' && 'card--heat'
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <article className={className}>
+      <header className="card__head">
+        <div>
+          <div className="card__name">{device.name}</div>
+          <div className="card__meta">
+            {device.model ?? 'LG'}
+            {state.mode ? ` · ${modeLabel(state.mode)}` : ''}
+          </div>
+        </div>
+
+        {controllable && (
+          <button
+            type="button"
+            className={`power${state.power ? ' power--on' : ''}${
+              mood === 'heat' ? ' power--heat' : ''
+            }`}
+            disabled={busy}
+            aria-label={state.power ? 'Desligar' : 'Ligar'}
+            aria-pressed={state.power}
+            onClick={() => onCommand({ type: 'power', value: !state.power })}
+          >
+            <PowerIcon />
+          </button>
+        )}
+      </header>
+
+      {!controllable && (
+        <p className="card__meta" style={{ marginTop: 14 }}>
+          Este aparelho aparece na sua conta LG, mas o Home Control ainda nao tem controles para
+          ele.
+        </p>
+      )}
+
+      {temperature && (
+        <TemperatureDial
+          value={state.temperature ?? temperature.min}
+          min={temperature.min}
+          max={temperature.max}
+          step={temperature.step}
+          mood={mood}
+          disabled={!state.power || busy}
+          currentTemperature={state.currentTemperature}
+          onChange={(value) => onCommand({ type: 'temperature', value })}
+        />
+      )}
+
+      {modes && (
+        <Segmented
+          label="Modo"
+          options={modes.options}
+          active={state.mode}
+          disabled={!state.power || busy}
+          format={modeLabel}
+          onPick={(value) => onCommand({ type: 'mode', value })}
+        />
+      )}
+
+      {fans && (
+        <Segmented
+          label="Ventilacao"
+          options={fans.options}
+          active={state.fan}
+          disabled={!state.power || busy}
+          format={fanLabel}
+          onPick={(value) => onCommand({ type: 'fan', value })}
+        />
+      )}
+
+      {(state.currentTemperature !== undefined || state.humidity !== undefined) && (
+        <div className="readings">
+          {state.currentTemperature !== undefined && (
+            <div>
+              <div className="reading__label">Ambiente</div>
+              <div className="reading__value">{Math.round(state.currentTemperature)}°C</div>
+            </div>
+          )}
+          {state.humidity !== undefined && (
+            <div>
+              <div className="reading__label">Umidade</div>
+              <div className="reading__value">{Math.round(state.humidity)}%</div>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  )
+}
