@@ -4,6 +4,13 @@ Central de automação da casa em Electron. Hoje fala com o ar-condicionado LG p
 oficial ThinQ Connect e com lâmpadas pela conexão oficial Tuya com Código de Usuário e QR Code. Cada integração tem
 sua própria tela de aparelhos e preferências, acessível pela barra lateral.
 
+## Próxima experiência: cômodos 3D
+
+O [plano de produto e implementação](docs/PLANO-EXPERIENCIA-CASA.md) prioriza uma
+maquete isométrica com aparelhos clicáveis, seguida de grupos e automações.
+A [proposta visual interativa](design/room-3d-concept.html) usa dados simulados e
+não controla os aparelhos reais. Veja [como explorar a proposta](design/README.md).
+
 ![status](https://img.shields.io/badge/estado-funcionando-success)
 
 ## Rodando
