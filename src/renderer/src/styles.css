@@ -716,101 +716,14 @@ input {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 15px;
-  margin-bottom: 20px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  background: rgba(255, 107, 107, 0.09);
-  font-size: 13px;
-  color: #ffc9c9;
-}
-
-.alert button {
-  margin-left: auto;
-  color: inherit;
-  opacity: 0.6;
-}
-
-.alert button:hover {
-  opacity: 1;
-}
-
-/* ── Modal ───────────────────────────────────────────────────────── */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  padding: 30px;
-  background: rgba(4, 5, 8, 0.72);
-  backdrop-filter: blur(10px);
-  animation: fade 0.18s ease;
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-
-.modal {
-  width: min(480px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 28px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-strong);
-  background: #11131a;
-  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 1);
-  animation: rise 0.24s var(--ease);
-}
-
-@keyframes rise {
-  from {
-    transform: translateY(14px) scale(0.98);
-  }
-  to {
-    transform: none;
-  }
-}
-
-.modal h2 {
-  font-size: 18px;
-  font-weight: 620;
-  margin-bottom: 5px;
-}
-
-.modal > p {
-  color: var(--muted);
-  font-size: 13px;
-  margin-bottom: 22px;
-}
-
-.field {
-  margin-bottom: 16px;
-}
-
-.field label {
-  display: block;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 6px;
-}
-
 .field input {
   width: 100%;
   padding: 11px 13px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font: inherit;
   transition: border-color 0.18s, background 0.18s;
 }
 
@@ -1279,142 +1192,6 @@ input {
   filter: blur(16px);
 }
 
-.room-floor {
-  --floor-rotate: rotateX(58deg) rotateZ(-36deg);
-  position: absolute;
-  width: min(72vw, 760px);
-  height: min(47vw, 500px);
-  max-width: calc(100% - 100px);
-  max-height: calc(100% - 130px);
-  min-width: 430px;
-  min-height: 310px;
-  left: 50%;
-  top: 55%;
-  transform: translate(-50%, -50%) var(--floor-rotate);
-  transform-style: preserve-3d;
-  border-radius: 24px;
-  background:
-    repeating-linear-gradient(90deg, rgba(88, 54, 27, 0.13) 0 1px, transparent 1px 56px),
-    linear-gradient(135deg, #b7956f, #d2b48b 46%, #a9825d);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14), inset 0 -30px 60px rgba(75, 44, 20, 0.16), 0 36px 70px rgba(0, 0, 0, 0.36);
-}
-
-.room-stage--top .room-floor {
-  transform: translate(-50%, -50%) rotateX(68deg);
-}
-
-.wall {
-  position: absolute;
-  background: linear-gradient(180deg, #d4d0c0, #b9b4a6);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-  transform-style: preserve-3d;
-}
-
-.wall--back {
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 38%;
-  transform: translateY(-100%) rotateX(90deg);
-  transform-origin: bottom;
-  border-radius: 22px 22px 0 0;
-}
-
-.wall--left {
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 32%;
-  transform: translateX(-100%) rotateY(-90deg);
-  transform-origin: right;
-  border-radius: 22px 0 0 22px;
-}
-
-.window-light {
-  position: absolute;
-  left: 22%;
-  top: -19%;
-  width: 28%;
-  height: 28%;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(255, 224, 164, 0.64), transparent);
-  filter: blur(8px);
-  transform: translateZ(5px);
-}
-
-.rug {
-  position: absolute;
-  left: 27%;
-  top: 38%;
-  width: 38%;
-  height: 32%;
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 40%, #f1d8ad, #d59970 66%, #8e6c64);
-  transform: translateZ(6px);
-  opacity: 0.9;
-}
-
-.sofa {
-  position: absolute;
-  left: 22%;
-  top: 21%;
-  width: 34%;
-  height: 17%;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #45606b, #2e414a);
-  box-shadow: 0 8px 0 #22323a;
-  transform: translateZ(25px);
-}
-
-.sofa i {
-  position: absolute;
-  top: 18%;
-  width: 25%;
-  height: 54%;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.sofa i:nth-child(1) { left: 9%; }
-.sofa i:nth-child(2) { left: 38%; }
-.sofa i:nth-child(3) { right: 9%; }
-
-.coffee-table {
-  position: absolute;
-  left: 40%;
-  top: 49%;
-  width: 21%;
-  height: 11%;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #412f28, #80604c);
-  box-shadow: 0 10px 0 rgba(53, 37, 29, 0.8);
-  transform: translateZ(22px);
-}
-
-.plant {
-  position: absolute;
-  right: 17%;
-  top: 20%;
-  width: 8%;
-  height: 8%;
-  border-radius: 50%;
-  background: #7b543d;
-  transform: translateZ(25px);
-}
-
-.plant i {
-  position: absolute;
-  width: 88%;
-  height: 150%;
-  border-radius: 70% 20% 70% 20%;
-  background: #4eb982;
-  transform-origin: bottom;
-}
-
-.plant i:nth-child(1) { left: -35%; top: -90%; transform: rotate(-36deg); }
-.plant i:nth-child(2) { left: 6%; top: -118%; transform: rotate(-6deg); }
-.plant i:nth-child(3) { right: -35%; top: -88%; transform: rotate(35deg); }
-
 .room-object {
   position: absolute;
   z-index: 4;
@@ -1808,71 +1585,136 @@ input {
   font-size: 12px;
 }
 
-@supports not (background: color-mix(in srgb, red, blue)) {
-  .lamp-shade {
-    box-shadow: inset 0 -7px 14px rgba(255, 215, 154, 0.42);
-  }
+/* ── Cômodos 3D com Three.js ─────────────────────────────────────── */
+.room-layout--3d {
+  grid-template-columns: minmax(0, 1fr) 310px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .room-object__label,
-  .room-device-list button {
-    transition: none;
-  }
+.room-stage-card--3d {
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr);
+  min-height: 560px;
 }
 
-@media (max-width: 1040px) {
-  .room-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .room-panel {
-    min-height: 210px;
-  }
+.room-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 0 0 28px 28px;
+  overflow: hidden;
 }
 
-@media (max-width: 760px) {
-  .rooms-hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .rooms-hero__actions {
-    justify-content: flex-start;
-  }
-
-  .room-stage-card {
-    grid-template-rows: auto 470px;
-  }
-
-  .room-stage-card__meta {
-    padding: 18px 18px 0;
-  }
-
-  .room-floor {
-    min-width: 360px;
-    min-height: 280px;
-  }
-
-  .room-toolbar,
-  .room-hint {
-    left: 16px;
-    right: 16px;
-    justify-content: center;
-  }
-
-  .room-hint {
-    bottom: 72px;
-    text-align: center;
-  }
+.room-canvas-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
 }
 
-@media (max-width: 500px) {
-  .room-stage-card {
-    border-radius: 22px;
-  }
+.room-canvas-toolbar {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(7, 8, 12, 0.72);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+}
 
-  .room-weather {
-    display: none;
+.room-canvas-toolbar .btn--small {
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.room-canvas-hint {
+  display: flex;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.room-canvas-hint span {
+  position: relative;
+  padding-left: 10px;
+}
+
+.room-canvas-hint span::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cool-a);
+  transform: translateY(-50%);
+}
+
+.room-canvas-hint span + span::before {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.device-dot {
+  background: radial-gradient(circle at 50% 35%, var(--device-glow, #ffd79a), rgba(255, 255, 255, 0.06) 62%);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.device-dot.is-on {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--device-glow, #ffd79a), transparent 30%);
+  border-color: color-mix(in srgb, var(--device-glow, #ffd79a), transparent 50%);
+}
+
+
+
+
+
+
+/* ── Tooltips 3D (Html do drei) ─────────────────────────────────── */
+.room3d-tooltip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(10, 14, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: room3d-tooltip-in 0.18s ease-out;
+}
+
+.room3d-tooltip strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.room3d-tooltip span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10.5px;
+  text-transform: lowercase;
+}
+
+@keyframes room3d-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
