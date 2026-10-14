@@ -535,10 +535,92 @@ input {
   margin-bottom: 7px;
 }
 
+.control__label {
+  display: flex;
+  justify-content: space-between;
+}
+
+.control__value {
+  color: var(--muted);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .segmented {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* ── Lampada: orbe e trilhas ─────────────────────────────────────── */
+
+.orb {
+  position: relative;
+  width: 172px;
+  height: 172px;
+  margin: 12px auto 18px;
+  display: grid;
+  place-items: center;
+}
+
+.orb__core {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  filter: blur(14px);
+  transition: opacity 0.4s var(--ease), background 0.4s var(--ease);
+}
+
+.orb__ring {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  transition: border-color 0.4s var(--ease);
+}
+
+.orb__readout {
+  position: relative;
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.slider {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.slider--off {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.slider__knob {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  transition: left 0.3s var(--ease), width 0.15s, height 0.15s;
+}
+
+.slider--dragging .slider__knob {
+  transition: width 0.15s, height 0.15s;
+  width: 22px;
+  height: 22px;
+}
+
+.slider--off .slider__knob {
+  display: none;
 }
 
 .segmented button {

@@ -85,7 +85,7 @@ export function App(): React.JSX.Element {
                 ? statuses
                 : [{ id: 'thinq', label: 'LG ThinQ', configured: connected }]
             }
-            deviceCount={devices.length}
+            devices={devices}
             onOpenSettings={() => setShowSettings(true)}
           />
 

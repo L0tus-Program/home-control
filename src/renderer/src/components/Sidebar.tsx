@@ -1,9 +1,9 @@
-import type { DriverStatus } from '../../../shared/types'
+import type { Device, DriverStatus } from '../../../shared/types'
 import { SettingsIcon } from './Icons'
 
 interface Props {
   statuses: DriverStatus[]
-  deviceCount: number
+  devices: Device[]
   onOpenSettings: () => void
 }
 
@@ -16,7 +16,13 @@ function stateInfo(status: DriverStatus): { text: string; variant: string } {
   return { text: 'conectado', variant: 'ok' }
 }
 
-export function Sidebar({ statuses, deviceCount, onOpenSettings }: Props): React.JSX.Element {
+/** Selo de duas letras: as duas primeiras da marca. "LG ThinQ" vira LG, "Elgin" vira EL. */
+function mark(label: string): string {
+  const [brand = label] = label.trim().split(/\s+/)
+  return brand.slice(0, 2).toUpperCase()
+}
+
+export function Sidebar({ statuses, devices, onOpenSettings }: Props): React.JSX.Element {
   return (
     <aside className="sidebar">
       <div>
@@ -24,6 +30,8 @@ export function Sidebar({ statuses, deviceCount, onOpenSettings }: Props): React
 
         {statuses.map((status) => {
           const info = stateInfo(status)
+          // Cada integracao conta so os aparelhos dela.
+          const count = devices.filter((device) => device.driverId === status.id).length
           return (
             <button
               key={status.id}
@@ -32,21 +40,21 @@ export function Sidebar({ statuses, deviceCount, onOpenSettings }: Props): React
               onClick={onOpenSettings}
               title={status.error ?? undefined}
             >
-              <span className="integration__mark">LG</span>
+              <span className="integration__mark">{mark(status.label)}</span>
               <span>
                 <span className="integration__name">{status.label}</span>
                 <span className={`integration__state integration__state--${info.variant}`}>
                   {info.text}
-                  {info.variant === 'ok' && deviceCount > 0 ? ` · ${deviceCount}` : ''}
+                  {info.variant === 'ok' && count > 0 ? ` · ${count}` : ''}
                 </span>
               </span>
             </button>
           )
         })}
 
-        {PLANNED.map((item) => (
+        {PLANNED.filter((item) => !statuses.some((status) => status.id === item.id)).map((item) => (
           <div key={item.id} className="integration" style={{ opacity: 0.4, cursor: 'default' }}>
-            <span className="integration__mark">EL</span>
+            <span className="integration__mark">{mark(item.label)}</span>
             <span>
               <span className="integration__name">{item.label}</span>
               <span className="integration__state integration__state--off">{item.note}</span>

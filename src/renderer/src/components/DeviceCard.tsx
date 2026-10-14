@@ -1,6 +1,7 @@
 import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
+import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
 interface Props {
@@ -63,6 +64,8 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
   const temperature = capability(device, 'temperature')
   const modes = capability(device, 'mode')
   const fans = capability(device, 'fan')
+  const brightness = capability(device, 'brightness')
+  const hasColor = capability(device, 'color') !== undefined
   const controllable = device.capabilities.length > 0
 
   const className = [
@@ -118,6 +121,16 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           disabled={!state.power || busy}
           currentTemperature={state.currentTemperature}
           onChange={(value) => onCommand({ type: 'temperature', value })}
+        />
+      )}
+
+      {(brightness || hasColor) && (
+        <LightControls
+          brightness={brightness}
+          hasColor={hasColor}
+          value={{ brightness: state.brightness, color: state.color }}
+          disabled={!state.power || busy}
+          onCommand={onCommand}
         />
       )}
 
