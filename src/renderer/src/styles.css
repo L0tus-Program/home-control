@@ -1040,7 +1040,8 @@ input {
 
 /* ── Cômodos 3D ─────────────────────────────────────────────────── */
 .rooms-page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   min-height: 100%;
 }
@@ -1114,7 +1115,9 @@ input {
   grid-template-columns: minmax(0, 1fr) 310px;
   gap: 18px;
   align-items: stretch;
-  min-height: min(660px, calc(100vh - 230px));
+  /* Ocupa o que sobra abaixo do titulo: a pagina cabe na janela sem scroll. */
+  flex: 1;
+  min-height: 380px;
 }
 
 .room-stage-card,
@@ -1642,15 +1645,14 @@ input {
 
 .room-stage-card--3d {
   display: grid;
-  grid-template-rows: auto minmax(420px, 1fr);
-  min-height: 560px;
+  grid-template-rows: auto minmax(260px, 1fr);
 }
 
 .room-canvas-wrap {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 260px;
   border-radius: 0 0 28px 28px;
   overflow: hidden;
 }

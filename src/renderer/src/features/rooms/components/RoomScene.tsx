@@ -105,7 +105,10 @@ function SceneContent({ devices, selectedKey, onSelect }: RoomSceneProps) {
 export function RoomScene({ devices, selectedKey, onSelect }: RoomSceneProps) {
   return (
     <div className="room-canvas-wrap">
+      {/* Absoluto: o tamanho vem do card, nunca do canvas. Em fluxo, a altura
+          do canvas realimentava o layout e crescia ao maximizar a janela. */}
       <Canvas
+        style={{ position: 'absolute', inset: 0 }}
         shadows
         camera={{ position: [4.4, 3.9, 3.6], fov: 42, near: 0.1, far: 80 }}
         gl={{ antialias: true, alpha: false }}
