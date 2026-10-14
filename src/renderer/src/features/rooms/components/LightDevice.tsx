@@ -1,14 +1,23 @@
 import * as THREE from 'three'
-import { useRef, useMemo, useState } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import type { Device } from '../../../../../shared/types'
+import { useCanvasTexture, useHoverCursor } from '../hooks'
+import type { Vec3 } from '../layout'
 
 interface LightDeviceProps {
   device: Device
-  position: [number, number, number]
+  position: Vec3
   isSelected: boolean
   onClick: () => void
+}
+
+/** Abajur de piso, em metros: cupula de 0,8 m de diametro a ~1,5 m do chao. */
+const LAMP = {
+  stemHeight: 1.1,
+  shade: { radius: 0.4, height: 0.5, y: 1.3 },
+  bulb: { radius: 0.11, y: 1.1 }
 }
 
 /** Converte hue/saturacao (0-360, 0-100) do modelo Tuya para hex. */
@@ -18,32 +27,30 @@ function hslToHex(hue: number, sat: number, light = 60): string {
   return `#${c.getHexString()}`
 }
 
+function drawHalo(ctx: CanvasRenderingContext2D, size: number): void {
+  const half = size / 2
+  const grad = ctx.createRadialGradient(half, half, 0, half, half, half)
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)')
+  grad.addColorStop(0.35, 'rgba(255,240,210,0.35)')
+  grad.addColorStop(1, 'rgba(255,240,210,0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, size, size)
+}
+
 export function LightDevice({ device, position, isSelected, onClick }: LightDeviceProps) {
   const groupRef = useRef<THREE.Group>(null)
   const bulbRef = useRef<THREE.Mesh>(null)
-  const [hovered, setHovered] = useState(false)
+  const { hovered, onPointerOver, onPointerOut } = useHoverCursor()
+  const haloTexture = useCanvasTexture(128, drawHalo)
 
   const isOn = device.state.power
   const brightness = device.state.brightness ?? 100
   const color = device.state.color ? hslToHex(device.state.color.hue, device.state.color.saturation) : '#ffca7a'
-
-  const haloTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 128
-    canvas.height = 128
-    const ctx = canvas.getContext('2d')!
-    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64)
-    grad.addColorStop(0, 'rgba(255,255,255,0.9)')
-    grad.addColorStop(0.35, 'rgba(255,240,210,0.35)')
-    grad.addColorStop(1, 'rgba(255,240,210,0)')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, 128, 128)
-    return new THREE.CanvasTexture(canvas)
-  }, [])
+  const haloSize = 2.6 * (brightness / 100 + 0.4)
 
   useFrame(({ clock }) => {
     if (groupRef.current) {
-      const target = isSelected ? 1.12 : hovered ? 1.06 : 1
+      const target = isSelected ? 1.08 : hovered ? 1.04 : 1
       const s = THREE.MathUtils.lerp(groupRef.current.scale.x, target, 0.12)
       groupRef.current.scale.setScalar(s)
     }
@@ -61,37 +68,30 @@ export function LightDevice({ device, position, isSelected, onClick }: LightDevi
         e.stopPropagation()
         onClick()
       }}
-      onPointerOver={(e) => {
-        e.stopPropagation()
-        setHovered(true)
-        document.body.style.cursor = 'pointer'
-      }}
-      onPointerOut={() => {
-        setHovered(false)
-        document.body.style.cursor = 'auto'
-      }}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
     >
       {/* Base */}
-      <mesh position={[0, 0.05, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.2, 0.26, 0.1, 32]} />
+      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.16, 0.2, 0.08, 32]} />
         <meshStandardMaterial color="#232b36" metalness={0.55} roughness={0.35} />
       </mesh>
 
-      {/* Haste */}
-      <mesh position={[0, 0.55, 0]} castShadow>
-        <cylinderGeometry args={[0.028, 0.028, 0.95, 16]} />
+      {/* Haste: da base ate dentro da cupula */}
+      <mesh position={[0, 0.08 + LAMP.stemHeight / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.022, 0.022, LAMP.stemHeight, 16]} />
         <meshStandardMaterial color="#3a4656" metalness={0.5} roughness={0.4} />
       </mesh>
 
       {/* Cupula */}
-      <mesh position={[0, 1.18, 0]} castShadow>
-        <coneGeometry args={[0.58, 0.72, 64, 1, true]} />
+      <mesh position={[0, LAMP.shade.y, 0]} castShadow>
+        <coneGeometry args={[LAMP.shade.radius, LAMP.shade.height, 64, 1, true]} />
         <meshStandardMaterial color="#f3efe6" side={THREE.DoubleSide} roughness={0.55} />
       </mesh>
 
       {/* Lampada */}
-      <mesh ref={bulbRef} position={[0, 0.95, 0]}>
-        <sphereGeometry args={[0.15, 32, 32]} />
+      <mesh ref={bulbRef} position={[0, LAMP.bulb.y, 0]}>
+        <sphereGeometry args={[LAMP.bulb.radius, 32, 32]} />
         <meshStandardMaterial
           color={isOn ? color : '#4a4a4a'}
           emissive={isOn ? color : '#000000'}
@@ -102,8 +102,8 @@ export function LightDevice({ device, position, isSelected, onClick }: LightDevi
 
       {/* Halo no piso */}
       {isOn && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-          <planeGeometry args={[3.2 * (brightness / 100 + 0.4), 3.2 * (brightness / 100 + 0.4)]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+          <planeGeometry args={[haloSize, haloSize]} />
           <meshBasicMaterial
             map={haloTexture}
             transparent
@@ -118,10 +118,10 @@ export function LightDevice({ device, position, isSelected, onClick }: LightDevi
       {/* Luz real na cena */}
       {isOn && (
         <pointLight
-          position={[0, 1.0, 0]}
+          position={[0, LAMP.bulb.y, 0]}
           color={color}
-          intensity={5 + (brightness / 100) * 7}
-          distance={9}
+          intensity={4 + (brightness / 100) * 6}
+          distance={7}
           decay={2}
           castShadow
           shadow-mapSize={[1024, 1024]}
@@ -130,15 +130,15 @@ export function LightDevice({ device, position, isSelected, onClick }: LightDevi
 
       {/* Anel de selecao */}
       {isSelected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
-          <ringGeometry args={[0.52, 0.6, 64]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
+          <ringGeometry args={[0.36, 0.42, 64]} />
           <meshBasicMaterial color="#5ec8ff" transparent opacity={0.85} />
         </mesh>
       )}
 
       {/* Tooltip 3D */}
       {(isSelected || hovered) && (
-        <Html position={[0, 1.9, 0]} center distanceFactor={11} zIndexRange={[10, 0]}>
+        <Html position={[0, LAMP.shade.y + 0.55, 0]} center distanceFactor={8} zIndexRange={[10, 0]}>
           <div className="room3d-tooltip">
             <strong>{device.name}</strong>
             <span>{isOn ? `${Math.round(brightness)}% · acesa` : 'apagada'}</span>

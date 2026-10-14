@@ -1,130 +1,101 @@
-import * as THREE from 'three'
-import { useMemo } from 'react'
+import { useCanvasTexture } from '../hooks'
+import { BACK_WALL_Z, LEFT_WALL_X, ROOM } from '../layout'
+
+const WINDOW = { x: 2.2, y: 1.95, width: 2.6, height: 1.9, bar: 0.07 }
+const BASEBOARD = { height: 0.12, depth: 0.03 }
+
+function drawWood(ctx: CanvasRenderingContext2D, size: number): void {
+  ctx.fillStyle = '#c9a87c'
+  ctx.fillRect(0, 0, size, size)
+  const rows = 24
+  for (let i = 0; i < rows; i++) {
+    const y = i * (size / rows)
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)'
+    ctx.fillRect(0, y, size, size / rows)
+    ctx.strokeStyle = 'rgba(60,40,20,0.08)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(size, y)
+    ctx.stroke()
+  }
+}
+
+function drawPlaster(ctx: CanvasRenderingContext2D, size: number): void {
+  ctx.fillStyle = '#f4f1ea'
+  ctx.fillRect(0, 0, size, size)
+  for (let i = 0; i < 6000; i++) {
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.2)'
+    ctx.fillRect(Math.random() * size, Math.random() * size, 2, 2)
+  }
+}
+
+/** Janela rente a parede do fundo: vidro claro, moldura e peitoril. */
+function Window() {
+  const { width, height, bar } = WINDOW
+  const frame = <meshStandardMaterial color="#ffffff" roughness={0.5} />
+  return (
+    <group position={[WINDOW.x, WINDOW.y, BACK_WALL_Z]}>
+      <mesh position={[0, 0, 0.01]}>
+        <boxGeometry args={[width, height, 0.02]} />
+        <meshStandardMaterial color="#bcd9f0" emissive="#6f97bd" emissiveIntensity={0.35} roughness={0.1} />
+      </mesh>
+      {/* Moldura: topo, base, laterais, montante e travessa */}
+      {[height / 2, -height / 2, 0].map((y, i) => (
+        <mesh key={`h${i}`} position={[0, y, 0.035]}>
+          <boxGeometry args={[width + bar, bar, 0.07]} />
+          {frame}
+        </mesh>
+      ))}
+      {[-width / 2, width / 2, 0].map((x, i) => (
+        <mesh key={`v${i}`} position={[x, 0, 0.035]}>
+          <boxGeometry args={[bar, height + bar, 0.07]} />
+          {frame}
+        </mesh>
+      ))}
+      {/* Peitoril */}
+      <mesh position={[0, -height / 2 - bar / 2 - 0.025, 0.07]} castShadow receiveShadow>
+        <boxGeometry args={[width + 0.3, 0.05, 0.14]} />
+        {frame}
+      </mesh>
+    </group>
+  )
+}
 
 export function Floor() {
-  const woodTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 1024
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#c9a87c'
-    ctx.fillRect(0, 0, 1024, 1024)
-    for (let i = 0; i < 24; i++) {
-      const y = i * (1024 / 24)
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)'
-      ctx.fillRect(0, y, 1024, 1024 / 24)
-      ctx.strokeStyle = 'rgba(60,40,20,0.08)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(1024, y)
-      ctx.stroke()
-    }
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(4, 4)
-    return tex
-  }, [])
-
-  const wallTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 512
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#f4f1ea'
-    ctx.fillRect(0, 0, 512, 512)
-    for (let i = 0; i < 6000; i++) {
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.2)'
-      ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2)
-    }
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(6, 3)
-    return tex
-  }, [])
+  const { width, depth, wallHeight, wallThickness: t } = ROOM
+  const woodTexture = useCanvasTexture(1024, drawWood, [width / 4.5, depth / 4.5])
+  const backWallTexture = useCanvasTexture(512, drawPlaster, [width / 3, wallHeight / 3])
+  const sideWallTexture = useCanvasTexture(512, drawPlaster, [depth / 3, wallHeight / 3])
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[18, 18]} />
-        <meshStandardMaterial
-          map={woodTexture}
-          roughness={0.35}
-          metalness={0.05}
-          color="#e8dcc8"
-        />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[width, depth]} />
+        <meshStandardMaterial map={woodTexture} roughness={0.35} metalness={0.05} color="#e8dcc8" />
       </mesh>
 
-      <group>
-        <mesh position={[0, 4, -8.95]} receiveShadow castShadow>
-          <boxGeometry args={[18, 8, 0.1]} />
-          <meshStandardMaterial map={wallTexture} roughness={0.9} color="#f7f5f0" />
-        </mesh>
-        <mesh position={[-8.95, 4, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow castShadow>
-          <boxGeometry args={[18, 8, 0.1]} />
-          <meshStandardMaterial map={wallTexture} roughness={0.9} color="#f7f5f0" />
-        </mesh>
-      </group>
+      {/* Paredes: a face interna fica exatamente em BACK_WALL_Z / LEFT_WALL_X */}
+      <mesh position={[-t / 2, wallHeight / 2, BACK_WALL_Z - t / 2]} receiveShadow castShadow>
+        <boxGeometry args={[width + t, wallHeight, t]} />
+        <meshStandardMaterial map={backWallTexture} roughness={0.9} color="#f7f5f0" />
+      </mesh>
+      <mesh position={[LEFT_WALL_X - t / 2, wallHeight / 2, 0]} receiveShadow castShadow>
+        <boxGeometry args={[t, wallHeight, depth]} />
+        <meshStandardMaterial map={sideWallTexture} roughness={0.9} color="#f7f5f0" />
+      </mesh>
 
-      <mesh position={[0, 0.15, -8.85]}>
-        <boxGeometry args={[18, 0.3, 0.08]} />
+      {/* Rodapes */}
+      <mesh position={[0, BASEBOARD.height / 2, BACK_WALL_Z + BASEBOARD.depth / 2]}>
+        <boxGeometry args={[width, BASEBOARD.height, BASEBOARD.depth]} />
         <meshStandardMaterial color="#8b7355" roughness={0.6} />
       </mesh>
-      <mesh position={[-8.85, 0.15, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <boxGeometry args={[18, 0.3, 0.08]} />
+      <mesh position={[LEFT_WALL_X + BASEBOARD.depth / 2, BASEBOARD.height / 2, 0]}>
+        <boxGeometry args={[BASEBOARD.depth, BASEBOARD.height, depth]} />
         <meshStandardMaterial color="#8b7355" roughness={0.6} />
       </mesh>
 
-      <group position={[3, 4.5, -8.85]}>
-        <mesh>
-          <boxGeometry args={[5.5, 4, 0.12]} />
-          <meshPhysicalMaterial
-            color="#dff6ff"
-            transparent
-            opacity={0.25}
-            roughness={0.05}
-            metalness={0.1}
-            transmission={0.6}
-            thickness={0.1}
-          />
-        </mesh>
-        <mesh position={[0, 2.1, 0]}>
-          <boxGeometry args={[5.7, 0.15, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[0, -2.1, 0]}>
-          <boxGeometry args={[5.7, 0.15, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[-2.8, 0, 0]}>
-          <boxGeometry args={[0.15, 4.2, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[2.8, 0, 0]}>
-          <boxGeometry args={[0.15, 4.2, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[0.08, 4.2, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[5.7, 0.08, 0.18]} />
-          <meshStandardMaterial color="#ffffff" />
-        </mesh>
-      </group>
-
-      <directionalLight
-        position={[3, 6, -12]}
-        intensity={1.2}
-        color="#fff8e7"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
-      />
+      <Window />
     </group>
   )
 }

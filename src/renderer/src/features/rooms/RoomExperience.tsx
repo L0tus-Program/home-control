@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { deviceKey } from '../../../../shared/devices'
 import type { Command, Device } from '../../../../shared/types'
 import { DeviceControlModal } from '../../components/DeviceControlModal'
 import { RefreshIcon, SettingsIcon } from '../../components/Icons'
+import { modeLabel } from '../../labels'
 import { RoomScene } from './components/RoomScene'
 
 interface Props {
@@ -15,16 +17,12 @@ interface Props {
   onCommand: (device: Device, command: Command) => void
 }
 
-function deviceKey(device: Device): string {
-  return `${device.driverId}:${device.id}`
-}
-
 function deviceStatus(device: Device): string {
   if (device.driverId === 'tuya' && !device.state.online) return 'Offline'
   if (!device.state.power) return 'Desligado'
   if (device.kind === 'air-conditioner') {
     const temp = device.state.temperature ? ` · ${Math.round(device.state.temperature)}°C` : ''
-    return `${device.state.mode ?? 'Ligado'}${temp}`
+    return `${device.state.mode ? modeLabel(device.state.mode) : 'Ligado'}${temp}`
   }
   if (device.kind === 'light') return `${Math.round(device.state.brightness ?? 100)}%`
   return 'Ligado'

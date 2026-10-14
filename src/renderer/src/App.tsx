@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { deviceKey } from '../../shared/devices'
 import type { AppSettings, DriverStatus } from '../../shared/types'
 import { DeviceCard } from './components/DeviceCard'
 import { RefreshIcon, SettingsIcon } from './components/Icons'
@@ -7,6 +8,9 @@ import { Sidebar, type AppSection } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
 import { RoomExperience } from './features/rooms/RoomExperience'
 import { useDevices } from './hooks/useDevices'
+
+/** Ao voltar para uma tela, so consulta a nuvem de novo se o dado tiver mais que isso. */
+const STALE_AFTER_MS = 60_000
 
 function greeting(): string {
   const hour = new Date().getHours()
@@ -31,11 +35,12 @@ export function App(): React.JSX.Element {
   const driverId = isTuya ? 'tuya' : 'thinq'
   const anyConnected = !!(settings?.tuya.hasCredentials || settings?.thinq.hasToken)
   const connected = !!(isTuya ? settings?.tuya.hasCredentials : settings?.thinq.hasToken)
-  const roomDeviceSource = useDevices(anyConnected, revision)
-  const integrationDeviceSource = useDevices(connected && selectedSection !== 'rooms', revision, driverId)
-  const source = selectedSection === 'rooms' ? roomDeviceSource : integrationDeviceSource
-  const { devices, statuses, loading, pending, error, refresh, send } = source
-  const visibleDevices = selectedSection === 'rooms' ? devices : devices.filter((device) => device.driverId === driverId)
+  const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send } = useDevices(anyConnected, revision)
+  const isRooms = selectedSection === 'rooms'
+  const visibleDevices = isRooms ? devices : devices.filter((device) => device.driverId === driverId)
+  const driverError = isRooms
+    ? statuses.find((status) => status.error)?.error
+    : statuses.find((status) => status.id === driverId)?.error
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true)
@@ -64,7 +69,8 @@ export function App(): React.JSX.Element {
     setDismissed(null)
   }, [])
 
-  const visibleError = error && error !== dismissed ? error : null
+  const shownError = error ?? driverError ?? null
+  const visibleError = shownError && shownError !== dismissed ? shownError : null
   const fallbackStatuses: DriverStatus[] = settings
     ? [
         { id: 'thinq', label: 'LG ThinQ', configured: settings.thinq.hasToken },
@@ -82,6 +88,9 @@ export function App(): React.JSX.Element {
     setSelectedSection(section)
     setDismissed(null)
     if (section === 'lg' || section === 'tuya') setSelectedIntegration(section)
+    // Mostra o que ja esta em memoria e so revalida se estiver velho.
+    if (section === 'rooms') refreshIfStale(STALE_AFTER_MS)
+    else refreshIfStale(STALE_AFTER_MS, section === 'tuya' ? 'tuya' : 'thinq')
   }
 
   return (
@@ -90,7 +99,7 @@ export function App(): React.JSX.Element {
       <div className="shell">
         <TitleBar />
         <div className="body">
-          <Sidebar statuses={integrationStatuses} devices={roomDeviceSource.devices} selectedSection={selectedSection}
+          <Sidebar statuses={integrationStatuses} devices={devices} selectedSection={selectedSection}
             selectedIntegration={selectedIntegration} onSelectSection={onSelectSection}
             onOpenSettings={() => setShowSettings(true)} />
           <main className="content" aria-busy={settingsLoading || loading}>
@@ -101,7 +110,7 @@ export function App(): React.JSX.Element {
               </div>
             )}
 
-            {selectedSection === 'rooms' ? (
+            {isRooms ? (
               <RoomExperience devices={visibleDevices} loading={settingsLoading || loading} pending={pending}
                 error={visibleError} connected={anyConnected} onRefresh={() => { setDismissed(null); void refresh() }}
                 onOpenSettings={() => setShowSettings(true)} onCommand={(device, command) => void send(device, command)} />
@@ -120,7 +129,7 @@ export function App(): React.JSX.Element {
                   </div>
                   {connected && (
                     <button type="button" className="btn btn--ghost" disabled={loading}
-                      onClick={() => { setDismissed(null); void refresh() }}>
+                      onClick={() => { setDismissed(null); void refresh(driverId) }}>
                       <RefreshIcon />{loading ? 'Atualizando…' : 'Atualizar'}
                     </button>
                   )}
@@ -128,7 +137,7 @@ export function App(): React.JSX.Element {
                 {visibleError && (
                   <div className="alert" role="alert">
                     <span>{visibleError}</span>
-                    <button type="button" aria-label="Dispensar aviso" onClick={() => setDismissed(error)}>✕</button>
+                    <button type="button" aria-label="Dispensar aviso" onClick={() => setDismissed(shownError)}>✕</button>
                   </div>
                 )}
                 {settings && !connected && (
@@ -145,7 +154,7 @@ export function App(): React.JSX.Element {
                 {connected && visibleDevices.length === 0 && loading && (
                   <div className="panel" role="status"><h2>Buscando seus aparelhos {label}</h2><p>Consultando sua conta…</p></div>
                 )}
-                {connected && visibleDevices.length === 0 && !loading && !error && (
+                {connected && visibleDevices.length === 0 && !loading && !shownError && (
                   <div className="panel">
                     <h2>Nenhum aparelho {label} encontrado</h2>
                     <p>{isTuya
@@ -154,7 +163,7 @@ export function App(): React.JSX.Element {
                     <button type="button" className="btn" onClick={() => setShowSettings(true)}>Revisar integração {label}</button>
                   </div>
                 )}
-                {connected && visibleDevices.length === 0 && !loading && error && (
+                {connected && visibleDevices.length === 0 && !loading && shownError && (
                   <div className="panel">
                     <h2>Confira sua conexão {label}</h2>
                     <p>{isTuya ? 'Não conseguimos carregar suas lâmpadas. Tente atualizar ou reconecte a conta pelo QR Code.' : 'Não conseguimos carregar seus aparelhos. Tente atualizar ou revise as credenciais da integração.'}</p>
@@ -164,8 +173,8 @@ export function App(): React.JSX.Element {
                 {visibleDevices.length > 0 && (
                   <div className="grid">
                     {visibleDevices.map((device) => (
-                      <DeviceCard key={`${device.driverId}:${device.id}`} device={device}
-                        busy={pending.has(`${device.driverId}:${device.id}`)} onCommand={(command) => void send(device, command)} />
+                      <DeviceCard key={deviceKey(device)} device={device}
+                        busy={pending.has(deviceKey(device))} onCommand={(command) => void send(device, command)} />
                     ))}
                   </div>
                 )}
