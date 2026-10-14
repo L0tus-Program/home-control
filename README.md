@@ -44,8 +44,7 @@ sistema não estiver disponível, o app recusa salvar em vez de gravar em texto 
 
 O perfil usado pelo instalador e pelo `npm run dev` é o mesmo: `%APPDATA%\\home-control`.
 O arquivo `config.json` fica nesse perfil do usuário, fora do repositório e da pasta do
-executável; os tokens permanecem cifrados pelo Windows. Na primeira abertura após uma
-versão antiga, o app migra automaticamente um `config.json` legado para esse perfil.
+executável; os tokens permanecem cifrados pelo Windows.
 
 ### O que não funciona
 

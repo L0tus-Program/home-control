@@ -1,5 +1,4 @@
 import { app, BrowserWindow, shell } from 'electron'
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
 
@@ -7,30 +6,13 @@ const isDev = !app.isPackaged
 const PROFILE_NAME = 'home-control'
 
 /**
- * O Electron usa nomes diferentes para o userData em desenvolvimento e no
- * instalador. Isso fazia a conta parecer desconectada ao alternar entre eles.
- * Fixamos um único perfil por usuário e migramos apenas o config.json legado.
+ * Usa um único perfil de usuário por máquina, com o mesmo nome em
+ * desenvolvimento e no instalador. Sem isso, o Electron usa pastas diferentes
+ * para cada um e a conta conectada parece sumir ao alternar entre eles.
  */
 function configureUserData(): void {
-  const defaultUserData = app.getPath('userData')
-  const canonicalUserData = join(app.getPath('appData'), PROFILE_NAME)
-
   app.setName(PROFILE_NAME)
-  app.setPath('userData', canonicalUserData)
-
-  const destination = join(canonicalUserData, 'config.json')
-  if (existsSync(destination)) return
-
-  const legacyCandidates = [
-    join(defaultUserData, 'config.json'),
-    join(app.getPath('appData'), 'Home Control', 'config.json'),
-    join(app.getPath('appData'), 'Electron', 'config.json')
-  ]
-  const legacy = legacyCandidates.find((candidate) => candidate !== destination && existsSync(candidate))
-  if (!legacy) return
-
-  mkdirSync(canonicalUserData, { recursive: true })
-  copyFileSync(legacy, destination)
+  app.setPath('userData', join(app.getPath('appData'), PROFILE_NAME))
 }
 
 configureUserData()
