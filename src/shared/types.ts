@@ -1,7 +1,7 @@
 /**
  * Modelo de dispositivo comum a todos os drivers.
  *
- * A ideia: cada integracao (LG ThinQ hoje, Elgin/Tuya depois) traduz o
+ * Cada integração (LG ThinQ ou Tuya) traduz o
  * protocolo dela para estas estruturas. A interface nunca fala ThinQ.
  */
 
@@ -71,9 +71,23 @@ export interface ThinqSettings {
   hasToken: boolean
 }
 
+export interface TuyaSettings {
+  region: string
+  /** Nunca trafega as credenciais em si, só se existem. */
+  hasCredentials: boolean
+  connection?: 'qr' | 'cloud' | null
+  userCode?: string
+}
+
 export interface AppSettings {
   thinq: ThinqSettings
+  tuya: TuyaSettings
 }
+
+export type TuyaQrCheck =
+  | { status: 'waiting' }
+  | { status: 'expired' }
+  | { status: 'connected'; settings: AppSettings }
 
 /** Resultado de qualquer chamada vinda da UI: erro nunca derruba o app. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string }

@@ -1,12 +1,13 @@
 {
   "name": "home-control",
   "version": "0.1.0",
-  "description": "Central de automacao da casa — LG ThinQ e, em breve, lampadas Elgin",
+  "description": "Central de automação da casa — LG ThinQ e Tuya",
   "main": "./out/main/index.js",
   "author": "Felipe",
   "license": "MIT",
   "private": true,
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "dev": "electron-vite dev",
     "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build",
     "preview": "electron-vite preview",
@@ -14,17 +15,20 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "esbuild": "0.25.12",
     "typescript": "^7.0.2",
     "vite": "^7.3.7"
   },
@@ -36,6 +40,7 @@
     },
     "files": [
       "out/**/*",
+      "THIRD_PARTY_NOTICES.md",
       "package.json"
     ],
     "win": {

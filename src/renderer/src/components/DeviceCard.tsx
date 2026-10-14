@@ -59,6 +59,7 @@ function Segmented({
 
 export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Element {
   const { state } = device
+  const offline = device.driverId === 'tuya' && !state.online
   const mood = moodFor(state.mode, state.power)
 
   const temperature = capability(device, 'temperature')
@@ -83,7 +84,8 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
         <div>
           <div className="card__name">{device.name}</div>
           <div className="card__meta">
-            {device.model ?? 'LG'}
+            {device.model ?? (device.driverId === 'tuya' ? 'Tuya' : 'LG')}
+            {offline ? ' · Offline' : ''}
             {state.mode ? ` · ${modeLabel(state.mode)}` : ''}
           </div>
         </div>
@@ -94,7 +96,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
             className={`power${state.power ? ' power--on' : ''}${
               mood === 'heat' ? ' power--heat' : ''
             }`}
-            disabled={busy}
+            disabled={busy || offline}
             aria-label={state.power ? 'Desligar' : 'Ligar'}
             aria-pressed={state.power}
             onClick={() => onCommand({ type: 'power', value: !state.power })}
@@ -106,7 +108,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
 
       {!controllable && (
         <p className="card__meta" style={{ marginTop: 14 }}>
-          Este aparelho aparece na sua conta LG, mas o Home Control ainda nao tem controles para
+          Este aparelho aparece na sua conta, mas o Home Control ainda não tem controles para
           ele.
         </p>
       )}
@@ -118,7 +120,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           max={temperature.max}
           step={temperature.step}
           mood={mood}
-          disabled={!state.power || busy}
+          disabled={offline || !state.power || busy}
           currentTemperature={state.currentTemperature}
           onChange={(value) => onCommand({ type: 'temperature', value })}
         />
@@ -129,7 +131,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           brightness={brightness}
           hasColor={hasColor}
           value={{ brightness: state.brightness, color: state.color }}
-          disabled={!state.power || busy}
+          disabled={offline || !state.power || busy}
           onCommand={onCommand}
         />
       )}
@@ -139,7 +141,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           label="Modo"
           options={modes.options}
           active={state.mode}
-          disabled={!state.power || busy}
+          disabled={offline || !state.power || busy}
           format={modeLabel}
           onPick={(value) => onCommand({ type: 'mode', value })}
         />
@@ -150,7 +152,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           label="Ventilacao"
           options={fans.options}
           active={state.fan}
-          disabled={!state.power || busy}
+          disabled={offline || !state.power || busy}
           format={fanLabel}
           onPick={(value) => onCommand({ type: 'fan', value })}
         />

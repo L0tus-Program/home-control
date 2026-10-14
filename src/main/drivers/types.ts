@@ -3,8 +3,7 @@ import type { Command, Device } from '../../shared/types'
 /**
  * Contrato de uma integracao.
  *
- * Para somar as lampadas Elgin depois, basta implementar isto num
- * `drivers/elgin/` e registrar em `registry.ts`. Nem a UI nem o IPC mudam.
+ * Cada provedor implementa este contrato e se registra em `registry.ts`.
  */
 export interface Driver {
   readonly id: string

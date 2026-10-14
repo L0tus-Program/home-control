@@ -1,83 +1,103 @@
 import type { Capability, Command, Device } from '../../../shared/types'
 import { DriverError, type Driver } from '../types'
-import { brightnessDps, colorDps, powerDps, readState } from './bulb'
-import { TuyaConnection, type TuyaDeviceConfig } from './protocol'
+import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, isControllableBulb, powerCommand, readState } from './bulb'
+import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
 
-export const TUYA_DRIVER_ID = 'tuya'
-
-/** Uma lâmpada configurada: credencial + nome amigável. */
-export interface TuyaBulbConfig extends TuyaDeviceConfig {
-  name: string
+/** Cloud de projeto e compartilhamento QR entregam o mesmo modelo ao driver. */
+export interface TuyaApi {
+  listDevices(): Promise<TuyaApiDevice[]>
+  getDevice(id: string): Promise<TuyaApiDevice>
+  getStatus(id: string): Promise<TuyaStatusItem[]>
+  getFunctions(id: string): Promise<{ functions: TuyaFunction[] }>
+  sendCommands(id: string, commands: TuyaCommand[]): Promise<void>
 }
 
-const CAPABILITIES: Capability[] = [
-  { kind: 'power' },
-  { kind: 'brightness', min: 1, max: 100 },
-  { kind: 'color' }
-]
+export const TUYA_DRIVER_ID = 'tuya'
+const LIGHT_CATEGORIES = new Set(['dj', 'dc', 'dd', 'xdd', 'fwd', 'tgq'])
 
-/**
- * Controle local das lâmpadas Tuya/Elgin. Fala direto com cada aparelho na
- * rede (porta 6668), sem nuvem. Só precisa da lista de aparelhos com a
- * localKey de cada um — ver `loadTuyaConfig`.
- */
+/** Integração oficial Tuya Cloud, independente de LG ThinQ. */
 export class TuyaDriver implements Driver {
   readonly id = TUYA_DRIVER_ID
-  readonly label = 'Elgin'
+  readonly label = 'Tuya'
+  private functions = new Map<string, TuyaFunction[]>()
 
-  constructor(private readonly bulbs: TuyaBulbConfig[]) {}
+  constructor(private readonly cloud: TuyaApi | null) {}
+  isConfigured(): boolean { return this.cloud !== null }
 
-  isConfigured(): boolean {
-    return this.bulbs.length > 0
+  private requireCloud(): TuyaApi {
+    if (!this.cloud) throw new DriverError('Configure a integração Tuya para conectar seus aparelhos.')
+    return this.cloud
   }
 
-  private configFor(deviceId: string): TuyaBulbConfig {
-    const bulb = this.bulbs.find((entry) => entry.id === deviceId)
-    if (!bulb) throw new DriverError('Lâmpada não configurada.')
-    return bulb
+  private async getFunctions(id: string): Promise<TuyaFunction[]> {
+    const cached = this.functions.get(id)
+    if (cached) return cached
+    const result = await this.requireCloud().getFunctions(id)
+    if (!Array.isArray(result.functions)) throw new DriverError('A Tuya não retornou os controles deste aparelho.')
+    this.functions.set(id, result.functions)
+    return result.functions
   }
 
   async listDevices(): Promise<Device[]> {
-    return Promise.all(this.bulbs.map((bulb) => this.read(bulb)))
+    const list = await this.requireCloud().listDevices()
+    const devices: Device[] = []
+    for (const info of list) {
+      if (!LIGHT_CATEGORIES.has(info.category)) continue
+      const device = await this.hydrate(info)
+      if (device) devices.push(device)
+    }
+    return devices
   }
 
   async getDevice(deviceId: string): Promise<Device> {
-    return this.read(this.configFor(deviceId))
+    const info = await this.requireCloud().getDevice(deviceId)
+    if (!LIGHT_CATEGORIES.has(info.category)) throw new DriverError('Este tipo de aparelho Tuya ainda não tem controles no Home Control.')
+    const device = await this.hydrate(info)
+    if (!device) throw new DriverError('Este aparelho não é uma lâmpada controlável.')
+    return device
   }
 
-  private async read(bulb: TuyaBulbConfig): Promise<Device> {
-    const base: Device = {
-      id: bulb.id,
-      driverId: this.id,
-      name: bulb.name,
-      kind: 'light',
-      capabilities: CAPABILITIES,
-      state: { online: false, power: false }
-    }
-    try {
-      const dps = await new TuyaConnection(bulb).query()
-      return { ...base, state: readState(dps) }
-    } catch {
-      // Lâmpada sem energia no bocal ou fora da rede: aparece offline.
-      return base
+  private async hydrate(info: TuyaApiDevice): Promise<Device | null> {
+    const status = info.status ?? await this.requireCloud().getStatus(info.id)
+    const functions = await this.getFunctions(info.id)
+    if (!isControllableBulb(status, functions)) return null
+    const caps = bulbCapabilities(status, functions)
+    const modes = caps.color ? bulbModes(status, functions) : []
+    const capabilities: Capability[] = [{ kind: 'power' }]
+    if (caps.brightness) capabilities.push({ kind: 'brightness', min: 1, max: 100 })
+    if (caps.color) capabilities.push({ kind: 'color' })
+    if (modes.length > 1) capabilities.push({ kind: 'mode', options: modes })
+    return {
+      id: info.id, driverId: this.id, name: info.name?.trim() || 'Lâmpada Tuya',
+      model: info.product_name, kind: 'light', capabilities,
+      state: readState(status, info.online, functions)
     }
   }
 
   async execute(deviceId: string, command: Command): Promise<void> {
-    const bulb = this.configFor(deviceId)
-    const connection = new TuyaConnection(bulb)
-
+    const cloud = this.requireCloud()
+    const functions = await this.getFunctions(deviceId)
+    if (!functions.some((item) => item.code === 'switch_led')) throw new DriverError('Este aparelho não é uma lâmpada controlável.')
     switch (command.type) {
       case 'power':
-        // O mapa de DP depende do esquema do aparelho, então lemos uma vez.
-        await connection.setDps(powerDps(await connection.query(), command.value))
+        await cloud.sendCommands(deviceId, [powerCommand(command.value)])
         return
-      case 'brightness':
-        await connection.setDps(brightnessDps(await connection.query(), command.value))
+      case 'brightness': {
+        const status = await cloud.getStatus(deviceId)
+        await cloud.sendCommands(deviceId, [brightnessCommand(status, command.value, functions)])
         return
-      case 'color':
-        await connection.setDps(colorDps(await connection.query(), command.value))
+      }
+      case 'color': {
+        const status = await cloud.getStatus(deviceId)
+        await cloud.sendCommands(deviceId, colorCommands(status, command.value, functions))
         return
+      }
+      case 'mode': {
+        const status = await cloud.getStatus(deviceId)
+        if (!bulbModes(status, functions).includes(command.value)) throw new DriverError('Modo não suportado por esta lâmpada.')
+        await cloud.sendCommands(deviceId, [{ code: 'work_mode', value: command.value }])
+        return
+      }
       default:
         throw new DriverError(`Comando não suportado pela lâmpada: ${command.type}`)
     }

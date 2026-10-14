@@ -1,7 +1,22 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { AppSettings, Command, Device, DriverStatus, Result } from '../shared/types'
 import { executeCommand, invalidateDrivers, listAllDevices } from './drivers/registry'
-import { getCountry, hasToken, setCountry, setToken } from './store'
+import { TuyaCloud } from './drivers/tuya/cloud'
+import { TuyaLogin } from './drivers/tuya/login'
+import { tuyaEndpoint } from '../shared/tuya'
+import {
+  getCountry,
+  getTuyaRegion,
+  getTuyaCredentials,
+  hasToken,
+  hasTuyaCredentials,
+  getTuyaSession,
+  hasTuyaConnection,
+  setTuyaSession,
+  setCountry,
+  setToken,
+  saveTuyaConfiguration
+} from './store'
 
 /** Toda chamada da UI volta como Result: um erro de nuvem nao vira tela branca. */
 async function guard<T>(run: () => Promise<T> | T): Promise<Result<T>> {
@@ -14,10 +29,32 @@ async function guard<T>(run: () => Promise<T> | T): Promise<Result<T>> {
 }
 
 function currentSettings(): AppSettings {
-  return { thinq: { country: getCountry(), hasToken: hasToken() } }
+  const session = getTuyaSession()
+  return {
+    thinq: { country: getCountry(), hasToken: hasToken() },
+    tuya: {
+      region: getTuyaRegion(), hasCredentials: hasTuyaConnection(),
+      connection: session ? 'qr' : hasTuyaCredentials() ? 'cloud' : null,
+      ...(session ? { userCode: session.userCode } : {})
+    }
+  }
 }
 
 export function registerIpc(): void {
+  const login = new TuyaLogin((session) => {
+    setTuyaSession(session)
+    invalidateDrivers()
+    return currentSettings()
+  })
+  ipcMain.handle('tuya:login-start', (_event, userCode: string) => guard(() => login.start(userCode)))
+  ipcMain.handle('tuya:login-check', (_event, requestId: string) => guard(() => login.check(requestId)))
+  ipcMain.handle('tuya:login-cancel', (_event, requestId: string) => guard(() => login.cancel(requestId)))
+  ipcMain.handle('tuya:disconnect', () => guard(() => {
+    login.cancel()
+    setTuyaSession(null)
+    invalidateDrivers()
+    return currentSettings()
+  }))
   ipcMain.handle('settings:get', () => guard(currentSettings))
 
   ipcMain.handle(
@@ -35,8 +72,41 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle(
+    'settings:save-tuya',
+    (
+      _event,
+      input: { accessId?: string; accessSecret?: string; region?: string }
+    ): Promise<Result<AppSettings>> =>
+      guard(async () => {
+        if (!input || typeof input !== 'object') throw new Error('Configuração Tuya inválida.')
+        const region = input.region === undefined ? getTuyaRegion() : input.region
+        tuyaEndpoint(region)
+        let creds = getTuyaCredentials()
+        if (input.accessId !== undefined || input.accessSecret !== undefined) {
+          if (typeof input.accessId !== 'string' || typeof input.accessSecret !== 'string') {
+            throw new Error('Preencha o Access ID e o Access Secret juntos.')
+          }
+          const accessId = input.accessId.trim()
+          const accessSecret = input.accessSecret.trim()
+          if (Boolean(accessId) !== Boolean(accessSecret)) throw new Error('Preencha o Access ID e o Access Secret juntos.')
+          creds = accessId ? { accessId, accessSecret } : null
+        } else if (!creds) {
+          throw new Error('Preencha o Access ID e o Access Secret do projeto Tuya.')
+        }
+        if (creds) {
+          // Testa autenticação e permissão de descoberta antes de substituir a conexão salva.
+          await new TuyaCloud({ ...creds, region }).listDevices()
+        }
+        saveTuyaConfiguration(creds, region)
+        invalidateDrivers()
+        return currentSettings()
+      })
+  )
+
+  ipcMain.handle(
     'devices:list',
-    (): Promise<Result<{ devices: Device[]; statuses: DriverStatus[] }>> => guard(listAllDevices)
+    (_event, driverId?: string): Promise<Result<{ devices: Device[]; statuses: DriverStatus[] }>> =>
+      guard(() => listAllDevices(driverId))
   )
 
   ipcMain.handle(

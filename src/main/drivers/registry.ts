@@ -1,22 +1,56 @@
 import type { Command, Device, DriverStatus } from '../../shared/types'
-import { getClientId, getCountry, getToken } from '../store'
+import {
+  getClientId,
+  getCountry,
+  getToken,
+  getTuyaCredentials,
+  getTuyaRegion,
+  getTuyaSession,
+  setTuyaSession
+} from '../store'
 import { ThinqClient } from './thinq/client'
 import { THINQ_DRIVER_ID, ThinqDriver } from './thinq/driver'
+import { TuyaCloud } from './tuya/cloud'
+import { TuyaDriver } from './tuya/driver'
+import { TuyaSharing } from './tuya/sharing'
 import type { Driver } from './types'
 import { DriverError } from './types'
 
 /**
  * Monta os drivers a partir da configuracao atual.
  *
- * Para somar a Elgin: crie `drivers/elgin/driver.ts` implementando `Driver` e
- * adicione uma linha aqui. Nada mais no app precisa saber que ela existe.
+ * Cada integracao implementa `Driver`; somar uma nova e uma linha aqui. Nada
+ * mais no app precisa saber que ela existe.
  */
 function buildDrivers(): Driver[] {
   const token = getToken()
   const thinq = new ThinqDriver(
     token ? new ThinqClient({ token, country: getCountry(), clientId: getClientId() }) : null
   )
-  return [thinq]
+
+  const creds = getTuyaCredentials()
+  const session = getTuyaSession()
+  let expectedRefresh = session?.token.refreshToken
+  const tuya = new TuyaDriver(
+    session
+      ? new TuyaSharing(session, (next) => {
+          const current = getTuyaSession()
+          if (current?.terminalId !== session.terminalId || current?.token.refreshToken !== expectedRefresh) {
+            throw new DriverError('A conexão Tuya mudou. Atualize a tela para continuar.')
+          }
+          setTuyaSession(next)
+          expectedRefresh = next.token.refreshToken
+        })
+      : creds
+      ? new TuyaCloud({
+          accessId: creds.accessId,
+          accessSecret: creds.accessSecret,
+          region: getTuyaRegion()
+        })
+      : null
+  )
+
+  return [thinq, tuya]
 }
 
 let cache: Driver[] | null = null
@@ -37,7 +71,8 @@ export function driverById(id: string): Driver {
   return driver
 }
 
-export async function listAllDevices(): Promise<{ devices: Device[]; statuses: DriverStatus[] }> {
+export async function listAllDevices(onlyDriverId?: string): Promise<{ devices: Device[]; statuses: DriverStatus[] }> {
+  if (onlyDriverId !== undefined) driverById(onlyDriverId)
   const devices: Device[] = []
   const statuses: DriverStatus[] = []
 
@@ -48,7 +83,7 @@ export async function listAllDevices(): Promise<{ devices: Device[]; statuses: D
       label: driver.label,
       configured: driver.isConfigured()
     }
-    if (driver.isConfigured()) {
+    if (driver.isConfigured() && (onlyDriverId === undefined || driver.id === onlyDriverId)) {
       try {
         devices.push(...(await driver.listDevices()))
       } catch (cause) {

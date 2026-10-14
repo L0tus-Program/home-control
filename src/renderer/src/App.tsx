@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { AppSettings } from '../../shared/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AppSettings, DriverStatus } from '../../shared/types'
 import { DeviceCard } from './components/DeviceCard'
 import { RefreshIcon, SettingsIcon } from './components/Icons'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsModal, type Integration } from './components/SettingsModal'
 import { Sidebar } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
 import { useDevices } from './hooks/useDevices'
@@ -15,149 +15,141 @@ function greeting(): string {
   return 'Boa noite'
 }
 
-function Onboarding({ onOpen }: { onOpen: () => void }): React.JSX.Element {
-  return (
-    <div className="panel">
-      <h2>Vamos conectar sua casa</h2>
-      <p>
-        O Home Control fala com o ar-condicionado pela API oficial ThinQ Connect — a mesma nuvem do
-        app no celular. Falta so o token.
-      </p>
-      <ol>
-        <li>
-          Abra <code>connect-pat.lgthinq.com</code>. A pagina carrega em coreano — e normal.
-        </li>
-        <li>
-          Entre pelo <strong>login por QR code</strong>, lendo o codigo com o app ThinQ do celular.
-          O login por ID e senha so aceita conta da Coreia.
-        </li>
-        <li>
-          <code>CREATE NEW TOKEN</code>, copie o token e cole aqui. A LG mostra ele uma vez so.
-        </li>
-      </ol>
-      <button type="button" className="btn btn--primary" onClick={onOpen}>
-        <SettingsIcon size={15} />
-        Colar o token
-      </button>
-    </div>
-  )
-}
-
 export function App(): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [selectedIntegration, setSelectedIntegration] = useState<Integration>('lg')
   const [showSettings, setShowSettings] = useState(false)
+  const [revision, setRevision] = useState(0)
   const [dismissed, setDismissed] = useState<string | null>(null)
+  const initialSelection = useRef(false)
+  const isTuya = selectedIntegration === 'tuya'
+  const label = isTuya ? 'Tuya' : 'LG ThinQ'
+  const driverId = isTuya ? 'tuya' : 'thinq'
+  const connected = !!(isTuya ? settings?.tuya.hasCredentials : settings?.thinq.hasToken)
+  const { devices, statuses, loading, pending, error, refresh, send } = useDevices(connected, revision, driverId)
+  const visibleDevices = devices.filter((device) => device.driverId === driverId)
 
-  const connected = settings?.thinq.hasToken ?? false
-  const { devices, statuses, loading, pending, error, refresh, send } = useDevices(connected)
-
-  useEffect(() => {
-    void window.home.getSettings().then((result) => {
-      if (result.ok) setSettings(result.data)
-    })
+  const loadSettings = useCallback(async () => {
+    setSettingsLoading(true)
+    setSettingsError(null)
+    try {
+      const result = await window.home.getSettings()
+      if (result.ok) {
+        setSettings(result.data)
+        if (!initialSelection.current) {
+          if (!result.data.thinq.hasToken && result.data.tuya.hasCredentials) setSelectedIntegration('tuya')
+          initialSelection.current = true
+        }
+      } else setSettingsError(result.error)
+    } catch {
+      setSettingsError('Não foi possível carregar as preferências. Tente novamente.')
+    } finally {
+      setSettingsLoading(false)
+    }
   }, [])
+
+  useEffect(() => { void loadSettings() }, [loadSettings])
 
   const onSaved = useCallback((next: AppSettings) => {
     setSettings(next)
+    setRevision((current) => current + 1)
     setDismissed(null)
   }, [])
 
-  // Carregando a configuracao: segura a tela para nao piscar o onboarding.
-  if (!settings) return <div className="shell" />
-
   const visibleError = error && error !== dismissed ? error : null
+  const integrationStatuses: DriverStatus[] = settings
+    ? [
+        { id: 'thinq', label: 'LG ThinQ', configured: settings.thinq.hasToken },
+        { id: 'tuya', label: 'Tuya', configured: settings.tuya.hasCredentials }
+      ].map((fallback) => ({ ...statuses.find((status) => status.id === fallback.id), ...fallback }))
+    : []
 
   return (
     <>
-      <div className="aurora">
-        <span />
-        <span />
-        <span />
-      </div>
-
+      <div className="aurora" aria-hidden="true"><span /><span /><span /></div>
       <div className="shell">
         <TitleBar />
-
         <div className="body">
-          <Sidebar
-            statuses={
-              statuses.length > 0
-                ? statuses
-                : [{ id: 'thinq', label: 'LG ThinQ', configured: connected }]
-            }
-            devices={devices}
-            onOpenSettings={() => setShowSettings(true)}
-          />
-
-          <main className="content">
+          <Sidebar statuses={integrationStatuses} devices={visibleDevices} selectedIntegration={selectedIntegration}
+            onSelectIntegration={(next) => { setSelectedIntegration(next); setDismissed(null) }}
+            onOpenSettings={() => setShowSettings(true)} />
+          <main className="content" aria-busy={settingsLoading || loading}>
             <div className="content__head">
               <div>
+                <div className="content__integration">{label}</div>
                 <h1>{greeting()}, Felipe</h1>
-                <p>
-                  {connected
-                    ? devices.length > 0
-                      ? `${devices.length} ${devices.length === 1 ? 'aparelho' : 'aparelhos'} na sua casa`
-                      : 'Nenhum aparelho encontrado nesta conta'
-                    : 'Conecte uma integracao para comecar'}
+                <p aria-live="polite">
+                  {settingsLoading ? 'Carregando sua casa…' : loading && visibleDevices.length === 0
+                    ? 'Buscando seus aparelhos…' : connected
+                    ? `${visibleDevices.length} ${visibleDevices.length === 1 ? 'aparelho' : 'aparelhos'} ${isTuya ? 'Tuya' : 'LG'} na sua casa`
+                    : `Conecte sua conta ${label} para começar`}
                 </p>
               </div>
-
               {connected && (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  disabled={loading}
-                  onClick={() => void refresh()}
-                >
-                  <RefreshIcon />
-                  {loading ? 'Atualizando…' : 'Atualizar'}
+                <button type="button" className="btn btn--ghost" disabled={loading}
+                  onClick={() => { setDismissed(null); void refresh() }}>
+                  <RefreshIcon />{loading ? 'Atualizando…' : 'Atualizar'}
                 </button>
               )}
             </div>
-
+            {settingsError && (
+              <div className="panel" role="alert">
+                <h2>Não foi possível abrir sua casa</h2><p>{settingsError}</p>
+                <button type="button" className="btn" onClick={() => void loadSettings()}>Tentar novamente</button>
+              </div>
+            )}
             {visibleError && (
-              <div className="alert">
+              <div className="alert" role="alert">
                 <span>{visibleError}</span>
-                <button type="button" aria-label="Dispensar" onClick={() => setDismissed(error)}>
-                  ✕
+                <button type="button" aria-label="Dispensar aviso" onClick={() => setDismissed(error)}>✕</button>
+              </div>
+            )}
+            {settings && !connected && (
+              <div className="panel">
+                <h2>{isTuya ? 'Conecte suas lâmpadas Tuya' : 'Conecte seu ar-condicionado LG'}</h2>
+                <p>{isTuya
+                  ? 'Conecte pelo Código de Usuário e confirme o QR Code no app Tuya Smart ou Smart Life. Suas lâmpadas aparecem automaticamente nesta tela.'
+                  : 'Controle seu ar-condicionado pela API oficial ThinQ Connect. Cole seu token de acesso para começar.'}</p>
+                <button type="button" className="btn btn--primary" onClick={() => setShowSettings(true)}>
+                  <SettingsIcon size={15} />{isTuya ? 'Conectar Tuya' : 'Conectar LG ThinQ'}
                 </button>
               </div>
             )}
-
-            {!connected && <Onboarding onOpen={() => setShowSettings(true)} />}
-
-            {connected && devices.length === 0 && !loading && !visibleError && (
+            {connected && visibleDevices.length === 0 && loading && (
+              <div className="panel" role="status"><h2>Buscando seus aparelhos {label}</h2><p>Consultando sua conta…</p></div>
+            )}
+            {connected && visibleDevices.length === 0 && !loading && !error && (
               <div className="panel">
-                <h2>Conta conectada, nenhum aparelho</h2>
-                <p>
-                  A conta respondeu, mas nao listou nenhum aparelho. Se o seu ar for de uma geracao
-                  antiga, ele pode estar na plataforma ThinQ legada, que esta API nao cobre.
-                </p>
+                <h2>Nenhum aparelho {label} encontrado</h2>
+                <p>{isTuya
+                  ? 'Confira se suas lâmpadas aparecem na conta Tuya Smart ou Smart Life autorizada. Se necessário, reconecte a conta pelo QR Code.'
+                  : 'A conta respondeu, mas não listou aparelhos. Confira se o ar-condicionado é compatível com a API ThinQ Connect.'}</p>
+                <button type="button" className="btn" onClick={() => setShowSettings(true)}>Revisar integração {label}</button>
               </div>
             )}
-
-            {devices.length > 0 && (
+            {connected && visibleDevices.length === 0 && !loading && error && (
+              <div className="panel">
+                <h2>Confira sua conexão {label}</h2>
+                <p>{isTuya ? 'Não conseguimos carregar suas lâmpadas. Tente atualizar ou reconecte a conta pelo QR Code.' : 'Não conseguimos carregar seus aparelhos. Tente atualizar ou revise as credenciais da integração.'}</p>
+                <button type="button" className="btn" onClick={() => setShowSettings(true)}>Revisar integração {label}</button>
+              </div>
+            )}
+            {visibleDevices.length > 0 && (
               <div className="grid">
-                {devices.map((device) => (
-                  <DeviceCard
-                    key={device.id}
-                    device={device}
-                    busy={pending.has(device.id)}
-                    onCommand={(command) => void send(device, command)}
-                  />
+                {visibleDevices.map((device) => (
+                  <DeviceCard key={`${device.driverId}:${device.id}`} device={device}
+                    busy={pending.has(device.id)} onCommand={(command) => void send(device, command)} />
                 ))}
               </div>
             )}
           </main>
         </div>
       </div>
-
-      {showSettings && (
-        <SettingsModal
-          settings={settings}
-          onClose={() => setShowSettings(false)}
-          onSaved={onSaved}
-        />
+      {showSettings && settings && (
+        <SettingsModal settings={settings} initialIntegration={selectedIntegration}
+          onClose={() => setShowSettings(false)} onSaved={onSaved} />
       )}
     </>
   )

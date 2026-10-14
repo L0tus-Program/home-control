@@ -1,109 +1,115 @@
 import type { ColorState, DeviceState } from '../../../shared/types'
+import type { TuyaCommand, TuyaFunction, TuyaStatusItem } from './cloud'
+import { DriverError } from '../types'
 
-/**
- * Tradução entre os "data points" (DP) de uma lâmpada Tuya e o nosso
- * DeviceState. A Tuya tem dois esquemas de numeração; detectamos qual o
- * aparelho usa pela presença do DP de ligar.
- *
- * Esquema A (antigo):  1=power 2=modo 3=brilho(25-255)  5=cor
- * Esquema B (novo):   20=power 21=modo 22=brilho(10-1000) 24=cor
- *
- * ATENÇÃO: o mapeamento exato de DP varia por modelo. Isto cobre as duas
- * famílias padrão de lâmpada RGB; os números e faixas devem ser conferidos
- * contra o primeiro `query` real de cada lâmpada e ajustados se necessário.
- */
+interface ColorHsv { h: number; s: number; v: number }
+interface Range { min: number; max: number; step: number }
 
-interface Schema {
-  power: string
-  mode: string
-  brightness: string
-  color: string
-  brightnessMin: number
-  brightnessMax: number
+function statusMap(status: TuyaStatusItem[]): Map<string, unknown> {
+  return new Map(status.map((item) => [item.code, item.value]))
 }
 
-const SCHEMA_A: Schema = {
-  power: '1',
-  mode: '2',
-  brightness: '3',
-  color: '5',
-  brightnessMin: 25,
-  brightnessMax: 255
+function pick(status: TuyaStatusItem[], functions: TuyaFunction[], ...codes: string[]): string | undefined {
+  const available = new Set((functions.length ? functions : status).map((item) => item.code))
+  return codes.find((code) => available.has(code))
 }
 
-const SCHEMA_B: Schema = {
-  power: '20',
-  mode: '21',
-  brightness: '22',
-  color: '24',
-  brightnessMin: 10,
-  brightnessMax: 1000
+function safeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try { return JSON.parse(value) } catch { return null }
 }
 
-export function detectSchema(dps: Record<string, unknown>): Schema {
-  return '20' in dps ? SCHEMA_B : SCHEMA_A
+function parseHsv(value: unknown): ColorHsv | null {
+  const raw = safeJson(value) as Partial<ColorHsv> | null
+  if (!raw || typeof raw !== 'object') return null
+  const { h, s, v } = raw
+  return typeof h === 'number' && Number.isFinite(h) && typeof s === 'number' && Number.isFinite(s) && typeof v === 'number' && Number.isFinite(v)
+    ? { h, s, v } : null
 }
 
 function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) throw new DriverError('O valor do comando precisa ser um número válido.')
   return Math.min(Math.max(value, min), max)
 }
 
-/** Cor Tuya: hex de hue(0-360) + sat(0-1000) + val(0-1000), 4 dígitos cada. */
-function parseColor(hex: unknown): ColorState | undefined {
-  if (typeof hex !== 'string' || hex.length < 12) return undefined
-  const hue = parseInt(hex.slice(0, 4), 16)
-  const sat = parseInt(hex.slice(4, 8), 16)
-  if (Number.isNaN(hue) || Number.isNaN(sat)) return undefined
-  return { hue: clamp(hue, 0, 359), saturation: clamp(Math.round(sat / 10), 0, 100) }
+function brightnessRange(code: string, functions: TuyaFunction[]): Range {
+  const fallback = code.endsWith('_v2') ? { min: 10, max: 1000, step: 1 } : { min: 25, max: 255, step: 1 }
+  const spec = safeJson(functions.find((item) => item.code === code)?.values) as Partial<Range> | null
+  if (!spec || typeof spec.min !== 'number' || typeof spec.max !== 'number' || !Number.isFinite(spec.min) || !Number.isFinite(spec.max) || spec.max <= spec.min) return fallback
+  return { min: spec.min, max: spec.max, step: typeof spec.step === 'number' && spec.step > 0 && Number.isFinite(spec.step) ? spec.step : 1 }
 }
 
-function buildColor(color: ColorState): string {
-  const hue = clamp(Math.round(color.hue), 0, 360)
-  const sat = clamp(Math.round(color.saturation * 10), 0, 1000)
-  const val = 1000 // intensidade da cor no máximo; o brilho mora no DP próprio
-  const h = hue.toString(16).padStart(4, '0')
-  const s = sat.toString(16).padStart(4, '0')
-  const v = val.toString(16).padStart(4, '0')
-  return `${h}${s}${v}`
+function colorMax(code: string): number { return code.endsWith('_v2') ? 1000 : 255 }
+function percentToRaw(percent: number, range: Range): number {
+  const raw = range.min + ((clamp(percent, 1, 100) - 1) / 99) * (range.max - range.min)
+  return Math.min(range.max, range.min + Math.round((raw - range.min) / range.step) * range.step)
+}
+function rawToPercent(raw: number, range: Range): number {
+  return clamp(Math.round(1 + ((raw - range.min) / (range.max - range.min)) * 99), 1, 100)
 }
 
-export function readState(dps: Record<string, unknown>): DeviceState {
-  const schema = detectSchema(dps)
-  const rawBrightness = dps[schema.brightness]
-  const span = schema.brightnessMax - schema.brightnessMin
+export function readState(status: TuyaStatusItem[], online: boolean, functions: TuyaFunction[] = []): DeviceState {
+  const map = statusMap(status)
+  const brightCode = pick(status, functions, 'bright_value_v2', 'bright_value')
+  const colourCode = pick(status, functions, 'colour_data_v2', 'colour_data')
+  const hsv = colourCode ? parseHsv(map.get(colourCode)) : null
+  const mode = typeof map.get('work_mode') === 'string' ? map.get('work_mode') as string : undefined
+  const rawBright = brightCode ? map.get(brightCode) : undefined
+  const brightness = mode === 'colour' && hsv && colourCode
+    ? clamp(Math.round(hsv.v / colorMax(colourCode) * 100), 1, 100)
+    : typeof rawBright === 'number' && Number.isFinite(rawBright) && brightCode
+      ? rawToPercent(rawBright, brightnessRange(brightCode, functions)) : undefined
+  const color = hsv && colourCode && mode !== 'white'
+    ? { hue: clamp(hsv.h, 0, 359), saturation: clamp(Math.round(hsv.s / colorMax(colourCode) * 100), 0, 100) } : undefined
+  return { online, power: map.get('switch_led') === true, brightness, color, mode }
+}
 
-  let brightness: number | undefined
-  if (typeof rawBrightness === 'number') {
-    brightness = clamp(Math.round(((rawBrightness - schema.brightnessMin) / span) * 100), 1, 100)
+export function powerCommand(on: boolean): TuyaCommand {
+  if (typeof on !== 'boolean') throw new DriverError('O comando de energia precisa ser verdadeiro ou falso.')
+  return { code: 'switch_led', value: on }
+}
+
+export function brightnessCommand(status: TuyaStatusItem[], percent: number, functions: TuyaFunction[] = []): TuyaCommand {
+  const map = statusMap(status)
+  const colourCode = pick(status, functions, 'colour_data_v2', 'colour_data')
+  if (map.get('work_mode') === 'colour' && colourCode) {
+    const hsv = parseHsv(map.get(colourCode))
+    if (!hsv) throw new DriverError('Atualize a lâmpada antes de ajustar a intensidade da cor.')
+    return { code: colourCode, value: { ...hsv, v: Math.round(clamp(percent, 1, 100) / 100 * colorMax(colourCode)) } }
   }
+  const code = pick(status, functions, 'bright_value_v2', 'bright_value')
+  if (!code) throw new DriverError('Esta lâmpada não permite ajustar a intensidade neste modo.')
+  return { code, value: percentToRaw(percent, brightnessRange(code, functions)) }
+}
 
+export function colorCommands(status: TuyaStatusItem[], color: ColorState, functions: TuyaFunction[] = []): TuyaCommand[] {
+  const code = pick(status, functions, 'colour_data_v2', 'colour_data')
+  if (!code) throw new DriverError('Esta lâmpada não permite ajustar a cor.')
+  const brightness = readState(status, true, functions).brightness ?? 100
+  const commands: TuyaCommand[] = []
+  if (pick(status, functions, 'work_mode')) commands.push({ code: 'work_mode', value: 'colour' })
+  commands.push({ code, value: {
+    h: clamp(Math.round(color.hue), 0, 360),
+    s: Math.round(clamp(color.saturation, 0, 100) / 100 * colorMax(code)),
+    v: Math.round(brightness / 100 * colorMax(code))
+  } })
+  return commands
+}
+
+export function isControllableBulb(status: TuyaStatusItem[], functions: TuyaFunction[] = []): boolean {
+  return Boolean(pick(status, functions, 'switch_led'))
+}
+
+export function bulbCapabilities(status: TuyaStatusItem[], functions: TuyaFunction[] = []): { brightness: boolean; color: boolean } {
   return {
-    online: true,
-    power: dps[schema.power] === true,
-    brightness,
-    color: parseColor(dps[schema.color])
+    brightness: Boolean(pick(status, functions, 'bright_value_v2', 'bright_value')),
+    color: Boolean(pick(status, functions, 'colour_data_v2', 'colour_data'))
   }
 }
 
-export function powerDps(dps: Record<string, unknown>, on: boolean): Record<string, unknown> {
-  return { [detectSchema(dps).power]: on }
-}
-
-export function brightnessDps(
-  dps: Record<string, unknown>,
-  percent: number
-): Record<string, unknown> {
-  const schema = detectSchema(dps)
-  const span = schema.brightnessMax - schema.brightnessMin
-  const value = Math.round(schema.brightnessMin + (clamp(percent, 1, 100) / 100) * span)
-  return { [schema.brightness]: value }
-}
-
-export function colorDps(
-  dps: Record<string, unknown>,
-  color: ColorState
-): Record<string, unknown> {
-  const schema = detectSchema(dps)
-  // Trocar a cor sem pôr a lâmpada em modo "colour" não tem efeito visível.
-  return { [schema.mode]: 'colour', [schema.color]: buildColor(color) }
+export function bulbModes(status: TuyaStatusItem[], functions: TuyaFunction[] = []): string[] {
+  if (!pick(status, functions, 'work_mode')) return []
+  const spec = safeJson(functions.find((item) => item.code === 'work_mode')?.values) as { range?: unknown } | null
+  const range = Array.isArray(spec?.range) ? spec.range : ['white', 'colour']
+  return ['white', 'colour'].filter((mode) => range.includes(mode))
 }

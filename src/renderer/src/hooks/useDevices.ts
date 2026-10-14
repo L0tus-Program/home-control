@@ -38,7 +38,7 @@ export interface DevicesApi {
   send: (device: Device, command: Command) => Promise<void>
 }
 
-export function useDevices(enabled: boolean): DevicesApi {
+export function useDevices(enabled: boolean, revision = 0, driverId?: string): DevicesApi {
   const [devices, setDevices] = useState<Device[]>([])
   const [statuses, setStatuses] = useState<DriverStatus[]>([])
   const [loading, setLoading] = useState(false)
@@ -47,12 +47,15 @@ export function useDevices(enabled: boolean): DevicesApi {
 
   // Evita que uma resposta atrasada sobrescreva um refresh mais novo.
   const requestId = useRef(0)
+  const contextId = useRef(0)
 
   const refresh = useCallback(async () => {
     if (!enabled) return
     const id = ++requestId.current
     setLoading(true)
-    const result = await window.home.listDevices()
+    const result = await window.home.listDevices(driverId).catch((cause: unknown) => ({
+      ok: false as const, error: cause instanceof Error ? cause.message : 'Não consegui carregar os aparelhos.'
+    }))
     if (id !== requestId.current) return
 
     if (result.ok) {
@@ -63,13 +66,21 @@ export function useDevices(enabled: boolean): DevicesApi {
       setError(result.error)
     }
     setLoading(false)
-  }, [enabled])
+  }, [enabled, driverId])
 
   useEffect(() => {
+    contextId.current += 1
+    setDevices([])
+    setStatuses([])
+    setPending(new Set())
+    setError(null)
+    setLoading(false)
     void refresh()
-  }, [refresh])
+    return () => { requestId.current += 1; contextId.current += 1 }
+  }, [refresh, revision])
 
   const send = useCallback(async (device: Device, command: Command) => {
+    const context = contextId.current
     const optimistic = applyOptimistic(device, command)
     setDevices((current) => current.map((item) => (item.id === device.id ? optimistic : item)))
     setPending((current) => new Set(current).add(device.id))
@@ -79,7 +90,10 @@ export function useDevices(enabled: boolean): DevicesApi {
       driverId: device.driverId,
       deviceId: device.id,
       command
-    })
+    }).catch((cause: unknown) => ({
+      ok: false as const, error: cause instanceof Error ? cause.message : 'Não consegui enviar o comando.'
+    }))
+    if (context !== contextId.current) return
 
     setDevices((current) =>
       current.map((item) =>

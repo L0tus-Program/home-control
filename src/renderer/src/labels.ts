@@ -1,6 +1,10 @@
-/** Traducao dos enums crus da LG para portugues. Chave desconhecida vira titulo legivel. */
+/** Tradução dos modos de cada integração para português. */
 
 const MODES: Record<string, string> = {
+  white: 'Branco',
+  colour: 'Cor',
+  scene: 'Cena',
+  music: 'Música',
   COOL: 'Refrigerar',
   AIR_DRY: 'Desumidificar',
   FAN: 'Ventilar',

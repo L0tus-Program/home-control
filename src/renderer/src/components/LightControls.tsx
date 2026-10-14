@@ -28,7 +28,7 @@ export function LightControls({
   const color = value.color
   const level = value.brightness ?? brightness?.max ?? 100
   const range = { min: brightness?.min ?? 1, max: brightness?.max ?? 100 }
-  const percent = Math.round(((level - range.min) / Math.max(range.max - range.min, 1)) * 100)
+  const percent = Math.round(level)
 
   const glow = cssColor(color)
 
