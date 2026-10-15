@@ -9,9 +9,12 @@ export function fakeBroker({ autoConnect = true, refuse = false } = {}) {
     client.options = options
     client.subscribed = []
     client.ended = false
+    // Como o mqtt.js 5: SUBACK 0x80 rejeita com code 128.
+    const refused = typeof refuse === 'function' ? refuse : () => refuse
     client.subscribeAsync = async (topic, opts) => {
+      if (refused(topic)) throw Object.assign(new Error('Subscribe error: Unspecified error'), { code: 128 })
       client.subscribed.push(topic)
-      return [{ topic, qos: refuse ? 128 : opts.qos }]
+      return [{ topic, qos: opts.qos }]
     }
     client.end = () => { client.ended = true; return client }
     client.endAsync = async () => { client.ended = true }

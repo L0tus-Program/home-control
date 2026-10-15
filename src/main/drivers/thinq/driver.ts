@@ -3,7 +3,7 @@ import type { Capability, Command, Device, DeviceState } from '../../../shared/t
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
-import { ALREADY_SUBSCRIBED, ThinqClient, type ThinqDeviceListItem } from './client'
+import { ThinqClient, type ThinqDeviceListItem } from './client'
 import { createCsr } from './csr'
 import { mergeReport, parseThinqMessage } from './realtime'
 
@@ -228,7 +228,7 @@ export class ThinqDriver implements Driver {
   /** Perfis quase nunca mudam; buscar a cada refresh so queima cota da API. */
   private readonly layouts = new Map<string, AcLayout>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
-  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown> }>()
+  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number }>()
 
   constructor(
     private readonly client: ThinqClient | null,
@@ -248,9 +248,10 @@ export class ThinqDriver implements Driver {
 
   async listDevices(): Promise<Device[]> {
     const client = this.requireClient()
+    const startedAt = Date.now()
     const items = (await client.listDevices()) ?? []
     const ids = new Set(items.map((item) => item.deviceId))
-    for (const id of this.known.keys()) if (!ids.has(id)) this.known.delete(id)
+    for (const [id, entry] of this.known) if (!ids.has(id) && entry.at < startedAt) this.known.delete(id)
     return Promise.all(items.map((item) => this.hydrate(item)))
   }
 
@@ -288,9 +289,16 @@ export class ThinqDriver implements Driver {
     if (base.kind !== 'air-conditioner') return base
 
     try {
+      const rev = this.known.get(item.deviceId)?.rev ?? 0
       const layout = await this.layoutFor(item.deviceId)
       const raw = asRecord(await this.requireClient().getState(item.deviceId))
-      this.known.set(item.deviceId, { item, raw })
+      const current = this.known.get(item.deviceId)
+      // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+      if (current && current.rev !== rev) {
+        current.item = item
+        return this.build(item, layout, current.raw)
+      }
+      this.known.set(item.deviceId, { item, raw, rev, at: Date.now() })
       return this.build(item, layout, raw)
     } catch (cause) {
       // Um aparelho offline nao pode derrubar a lista inteira.
@@ -368,7 +376,6 @@ export class ThinqDriver implements Driver {
       if (this.known.size === 0) await this.listDevices()
       const tolerate = (cause: unknown): void => {
         if (FATAL_CODES.has(errorCode(cause))) throw cause
-        if (!ALREADY_SUBSCRIBED.has(errorCode(cause))) listener.status('connecting', cause instanceof Error ? cause.message : String(cause))
       }
       for (const id of this.known.keys()) await client.subscribeEvents(id).catch(tolerate)
       await client.subscribeDeviceList().catch(tolerate)
@@ -428,6 +435,7 @@ export class ThinqDriver implements Driver {
           return
         }
         entry.raw = mergeReport(entry.raw, message.report)
+        entry.rev++
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })
       },
       status: (state, error) => listener.status(state, error),

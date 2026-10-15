@@ -52,6 +52,9 @@ export function parseTuyaMessage(raw: unknown): TuyaMessage | null {
   return null
 }
 
+/** Codigos que o app desenha. Relatos de outros (cena, musica, timer) nao pedem releitura. */
+const RELEVANT = /^(switch_led|bright_value(_v2)?|colour_data(_v2)?|work_mode|temp_value(_v2)?)$/
+
 function matchesType(type: string | undefined, value: unknown): boolean {
   switch (type) {
     case 'Boolean': return typeof value === 'boolean'
@@ -76,18 +79,18 @@ export function resolveReport(items: TuyaReportItem[], device: TuyaApiDevice, fu
   let unresolved = false
   for (const item of items) {
     let code = item.code
+    let converted = false
     if (!code && item.dpId !== undefined) {
       const dp = device.local?.dps[item.dpId]
-      if (!dp || (dp.convert !== undefined && dp.convert !== 'default')) {
-        unresolved = true
-        continue
-      }
+      // dpId sem traducao: nao sabemos o que e, entao nao vale uma leitura pela nuvem.
+      if (!dp) continue
       code = dp.code
+      converted = dp.convert !== undefined && dp.convert !== 'default'
     }
     if (!code) continue
     const declared = functions.find((fn) => fn.code === code)?.type
-    if (!matchesType(declared, item.value)) {
-      unresolved = true
+    if (converted || !matchesType(declared, item.value)) {
+      if (RELEVANT.test(code)) unresolved = true
       continue
     }
     updates.push({ code, value: item.value })

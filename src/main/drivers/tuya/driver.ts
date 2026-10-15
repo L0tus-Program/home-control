@@ -26,12 +26,17 @@ const LIGHT_CATEGORIES = new Set(['dj', 'dc', 'dd', 'xdd', 'fwd', 'tgq'])
 const FATAL_CODES = new Set(['1010', '1011', '1012', '1106'])
 /** Relatos que não sabemos traduzir viram uma leitura pela nuvem, no máximo uma por intervalo. */
 const REREAD_DELAY_MS = 1000
+const REREAD_MIN_INTERVAL_MS = 10_000
 /** Aparelho entrou ou saiu: os tópicos mudam, então a conexão é refeita. */
 const TOPOLOGY_RESTART_MS = 3000
 
 interface Known {
   info: TuyaApiDevice
   status: TuyaStatusItem[]
+  /** Sobe a cada relato do MQTT; uma leitura REST que começou antes não sobrescreve. */
+  rev: number
+  /** Quando entrou no cache; uma listagem mais velha não o remove. */
+  at: number
 }
 
 /** Integração oficial Tuya Cloud, independente de LG ThinQ. */
@@ -41,6 +46,7 @@ export class TuyaDriver implements Driver {
   private functions = new Map<string, TuyaFunction[]>()
   /** Última leitura de cada lâmpada; base para aplicar os relatos parciais do MQTT. */
   private known = new Map<string, Known>()
+  private listing: Promise<Device[]> | null = null
 
   constructor(
     private readonly cloud: TuyaApi | null,
@@ -62,32 +68,50 @@ export class TuyaDriver implements Driver {
     return result.functions
   }
 
-  async listDevices(): Promise<Device[]> {
+  /** Uma listagem por vez: a UI e o tempo real pedem juntos ao abrir o app. */
+  listDevices(): Promise<Device[]> {
+    this.listing ??= this.list().finally(() => { this.listing = null })
+    return this.listing
+  }
+
+  private async list(): Promise<Device[]> {
+    const startedAt = Date.now()
+    // A revisão vale de antes da consulta: o estado já vem nela.
+    const revs = new Map([...this.known].map(([id, entry]) => [id, entry.rev]))
     const list = await this.requireCloud().listDevices()
     const devices: Device[] = []
     const seen = new Set<string>()
     for (const info of list) {
       if (!LIGHT_CATEGORIES.has(info.category)) continue
-      const device = await this.hydrate(info)
+      const device = await this.hydrate(info, revs.get(info.id) ?? 0)
       if (device) { devices.push(device); seen.add(info.id) }
     }
-    for (const id of this.known.keys()) if (!seen.has(id)) this.known.delete(id)
+    for (const [id, entry] of this.known) if (!seen.has(id) && entry.at < startedAt) this.known.delete(id)
     return devices
   }
 
   async getDevice(deviceId: string): Promise<Device> {
+    const rev = this.known.get(deviceId)?.rev ?? 0
     const info = await this.requireCloud().getDevice(deviceId)
     if (!LIGHT_CATEGORIES.has(info.category)) throw new DriverError('Este tipo de aparelho Tuya ainda não tem controles no Home Control.')
-    const device = await this.hydrate(info)
+    const device = await this.hydrate(info, rev)
     if (!device) throw new DriverError('Este aparelho não é uma lâmpada controlável.')
     return device
   }
 
-  private async hydrate(info: TuyaApiDevice): Promise<Device | null> {
+  /** `rev`: revisão do cache quando a consulta que trouxe `info` começou. */
+  private async hydrate(info: TuyaApiDevice, rev: number): Promise<Device | null> {
     const status = info.status ?? await this.requireCloud().getStatus(info.id)
     const functions = await this.getFunctions(info.id)
+    const fresh = { ...info, status: undefined }
+    const current = this.known.get(info.id)
+    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+    if (current && current.rev !== rev) {
+      current.info = { ...fresh, online: current.info.online }
+      return this.build(current.info, current.status, functions)
+    }
     const device = this.build(info, status, functions)
-    if (device) this.known.set(info.id, { info: { ...info, status: undefined }, status })
+    if (device) this.known.set(info.id, { info: fresh, status, rev, at: Date.now() })
     return device
   }
 
@@ -150,13 +174,23 @@ export class TuyaDriver implements Driver {
       if (timers.has(key)) return
       timers.set(key, setTimeout(() => { timers.delete(key); run() }, delay))
     }
-    const reread = (id: string): void => later(`reread:${id}`, REREAD_DELAY_MS, () => {
-      this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
-    })
+    const lastReread = new Map<string, number>()
+    const reread = (id: string): void => {
+      const wait = Math.max(REREAD_DELAY_MS, (lastReread.get(id) ?? -Infinity) + REREAD_MIN_INTERVAL_MS - Date.now())
+      later(`reread:${id}`, wait, () => {
+        lastReread.set(id, Date.now())
+        this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
+      })
+    }
+    // Aparelho entrou ou saiu: a próxima conexão relista por conta própria.
+    let topologyDirty = false
 
     const link: MqttLink = new MqttLink({
       prepare: async () => {
-        if (this.known.size === 0) await this.listDevices()
+        if (this.known.size === 0 || topologyDirty) {
+          topologyDirty = false
+          await this.listDevices()
+        }
         const [homes, config] = await Promise.all([listHomeIds(), getMqttConfig()])
         const topics = [
           ...homes.map((home) => config.ownerTopic.replace('{ownerId}', home)),
@@ -177,7 +211,10 @@ export class TuyaDriver implements Driver {
         const entry = this.known.get(message.devId)
         if (message.kind === 'changed') {
           listener.event({ type: 'refresh' })
-          if (message.topology) later('topology', TOPOLOGY_RESTART_MS, () => link.restart())
+          if (message.topology) {
+            topologyDirty = true
+            later('topology', TOPOLOGY_RESTART_MS, () => link.restart())
+          }
           return
         }
         if (!entry) return
@@ -193,6 +230,7 @@ export class TuyaDriver implements Driver {
         // Quem relata estado está online.
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }
+        entry.rev++
         const device = this.build(entry.info, entry.status, functions)
         if (device) listener.event({ type: 'state', device })
       },

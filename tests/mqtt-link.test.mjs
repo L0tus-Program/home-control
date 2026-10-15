@@ -14,7 +14,7 @@ function setup(overrides = {}) {
     status: (state, error) => log.statuses.push(error ? `${state}:${error}` : state),
     reconnected: () => log.reconnected++,
     connect: broker.connect,
-    backoff: { min: 5, max: 20 },
+    timing: { minBackoffMs: 5, maxBackoffMs: 20, stableMs: 50, subscribeTimeoutMs: 200 },
     ...overrides.options
   })
   return { broker, log, link }
@@ -58,7 +58,7 @@ test('falhas seguidas viram unavailable, mas continuam tentando', async () => {
   link.start()
   await tick(120)
   assert.ok(calls >= 3)
-  assert.ok(log.statuses.includes('unavailable:sem rede'))
+  assert.ok(log.statuses.includes('unavailable:Não consegui manter a atualização em tempo real. Tentando de novo.'), 'erro tecnico nao chega a UI')
   await link.stop()
   const after = calls
   await tick(60)
@@ -85,11 +85,54 @@ test('renova antes das credenciais vencerem', async () => {
   await link.stop()
 })
 
-test('assinaturas todas recusadas contam como falha', async () => {
+test('assinaturas todas recusadas contam como falha; erro tecnico nao chega a UI', async () => {
   const { log, link } = setup({ broker: { refuse: true } })
   link.start()
   await tick(15)
   assert.ok(log.statuses.some((status) => status.startsWith('connecting:O servidor recusou')))
   assert.equal(log.statuses.includes('live'), false)
+  assert.equal(log.statuses.some((status) => /Subscribe error/.test(status)), false)
   await link.stop()
 })
+
+test('um topico recusado nao derruba os outros', async () => {
+  const { broker, log, link } = setup({ broker: { refuse: (topic) => topic === 'a' } })
+  link.start()
+  await tick(15)
+  assert.deepEqual(broker.last().subscribed, ['b'])
+  assert.equal(log.statuses.at(-1), 'live')
+  assert.equal(broker.clients.length, 1)
+  await link.stop()
+})
+
+test('broker que aceita e fecha logo nao vira loop: a espera cresce', async () => {
+  const { broker, log, link } = setup({ options: { timing: { minBackoffMs: 20, maxBackoffMs: 2000, stableMs: 10_000, subscribeTimeoutMs: 200 } } })
+  link.start()
+  const close = setInterval(() => { const client = broker.last(); if (client && !client.closedByTest && client.subscribed.length) { client.closedByTest = true; client.emit('close') } }, 2)
+  await tick(400)
+  clearInterval(close)
+  await link.stop()
+  // Sem crescer, 20-40 ms dariam ~12 conexoes; com dobra, no maximo umas 5.
+  assert.ok(broker.clients.length <= 6, `conexoes: ${broker.clients.length}`)
+  assert.ok(log.statuses.includes('unavailable:Conexão de tempo real encerrada.'))
+})
+
+test('assinatura sem resposta vira falha', async () => {
+  const { broker, log, link } = setup({ options: { timing: { minBackoffMs: 1000, maxBackoffMs: 1000, stableMs: 50, subscribeTimeoutMs: 30 } } })
+  const connect = broker.connect
+  const hang = (url, options) => { const client = connect(url, options); client.subscribeAsync = () => new Promise(() => {}); return client }
+  const stuck = new (link.constructor)({ ...linkOptions(log), connect: hang, timing: { minBackoffMs: 1000, maxBackoffMs: 1000, stableMs: 50, subscribeTimeoutMs: 30 } })
+  stuck.start()
+  await tick(80)
+  assert.ok(log.statuses.some((status) => status.startsWith('connecting:Assinatura de tempo real sem resposta')))
+  await stuck.stop()
+})
+
+function linkOptions(log) {
+  return {
+    prepare: async () => ({ url: 'mqtts://broker.test:8883', options: {}, topics: ['a'] }),
+    message: () => {},
+    status: (state, error) => log.statuses.push(error ? `${state}:${error}` : state),
+    reconnected: () => {}
+  }
+}
