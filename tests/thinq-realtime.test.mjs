@@ -232,3 +232,9 @@ test('LG: leitura que comecou antes de um relato usa a leitura como base e reapl
   assert.equal(device.state.power, true, 'relato mais novo vence')
   assert.equal(device.state.mode, 'HEAT', 'o resto vem da leitura')
 })
+
+test('LG: reaplicar relato com lista sem unidade nao duplica', async () => {
+  const { mergeReport } = await loadSource('src/main/drivers/thinq/realtime.ts')
+  const once = mergeReport({ errors: [{ code: 'E1' }] }, { errors: [{ code: 'E1' }] })
+  assert.deepEqual(once.errors, [{ code: 'E1' }])
+})

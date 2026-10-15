@@ -405,7 +405,17 @@ export class ThinqDriver implements Driver {
   private readonly energyProfileTried = new Map<string, number>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
   /** `history`: relatos recentes, para reaplicar sobre uma leitura da nuvem que comecou antes deles. */
-  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number; history?: Array<{ rev: number; report: Record<string, unknown> }> }>()
+  private readonly known = new Map<string, {
+    item: ThinqDeviceListItem
+    raw: Record<string, unknown>
+    rev: number
+    at: number
+    history?: Array<{ rev: number; report: Record<string, unknown> }>
+    /** Carimbo da leitura que escreveu a base; uma leitura mais velha nao a substitui. */
+    baseStamp: number
+    /** Revisao do ultimo relato que saiu do historico. */
+    prunedUpTo?: number
+  }>()
   /** Contador que so cresce: a protecao contra leitura atrasada sobrevive a remocoes do cache. */
   private revision = 0
 
@@ -481,20 +491,24 @@ export class ThinqDriver implements Driver {
 
   /** Le o estado do ar; lanca em falha. */
   private async read(item: ThinqDeviceListItem): Promise<Device> {
-    const rev = this.known.get(item.deviceId)?.rev ?? 0
+    // Carimbo de antes da consulta: relatos depois dele sao mais novos que ela.
+    const stamp = ++this.revision
     const layout = await this.layoutFor(item.deviceId)
     const raw = asRecord(await this.requireClient().getState(item.deviceId))
     const current = this.known.get(item.deviceId)
-    // Relatos do MQTT chegaram durante a leitura: a leitura e a base (corrige o que se perdeu)
-    // e eles, mais novos, vao por cima.
-    if (current && current.rev !== rev) {
-      const newer = (current.history ?? []).filter((entry) => entry.rev > rev)
+    // Leitura mais nova ja escreveu a base, ou relatos necessarios sairam do historico: o cache vale.
+    if (current && (current.baseStamp > stamp || (current.prunedUpTo ?? 0) > stamp)) {
       current.item = item
-      current.raw = newer.reduce((base, entry) => mergeReport(base, entry.report), raw)
       return this.build(item, layout, current.raw)
     }
-    this.known.set(item.deviceId, { item, raw, rev, at: Date.now(), history: current?.history })
-    return this.build(item, layout, raw)
+    // A leitura e a base (corrige o que o canal perdeu) e os relatos posteriores vao por cima.
+    const newer = (current?.history ?? []).filter((entry) => entry.rev > stamp)
+    const merged = newer.reduce((base, entry) => mergeReport(base, entry.report), raw)
+    this.known.set(item.deviceId, {
+      item, raw: merged, rev: current?.rev ?? 0, at: current?.at ?? Date.now(), baseStamp: stamp,
+      history: current?.history, prunedUpTo: current?.prunedUpTo
+    })
+    return this.build(item, layout, merged)
   }
 
   private async layoutFor(deviceId: string): Promise<AcLayout> {
@@ -783,7 +797,9 @@ export class ThinqDriver implements Driver {
         if ('operation' in message.report && !('timer' in message.report) && 'timer' in entry.raw) reread(message.deviceId)
         entry.raw = mergeReport(entry.raw, message.report)
         entry.rev = ++this.revision
-        entry.history = [...(entry.history ?? []), { rev: entry.rev, report: message.report }].slice(-REPORT_HISTORY_LIMIT)
+        const history = [...(entry.history ?? []), { rev: entry.rev, report: message.report }]
+        if (history.length > REPORT_HISTORY_LIMIT) entry.prunedUpTo = history[history.length - REPORT_HISTORY_LIMIT - 1].rev
+        entry.history = history.slice(-REPORT_HISTORY_LIMIT)
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })
       },
       status: (state, error) => {
