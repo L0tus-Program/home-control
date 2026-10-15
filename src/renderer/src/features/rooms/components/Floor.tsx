@@ -30,12 +30,12 @@ function drawPlaster(ctx: CanvasRenderingContext2D, size: number): void {
   }
 }
 
-/** Janela rente a parede do fundo: vidro claro, moldura e peitoril. */
-function Window({ backZ }: { backZ: number }) {
+/** Janela rente a parede do fundo: vidro claro, moldura e peitoril. Em salas estreitas, recua para caber. */
+function Window({ backZ, roomWidth }: { backZ: number; roomWidth: number }) {
   const { width, height, bar } = WINDOW
   const frame = <meshStandardMaterial color="#ffffff" roughness={0.5} />
   return (
-    <group position={[WINDOW.x, WINDOW.y, backZ]}>
+    <group position={[Math.min(WINDOW.x, roomWidth / 2 - width / 2 - 0.3), WINDOW.y, backZ]}>
       <mesh position={[0, 0, 0.01]}>
         <boxGeometry args={[width, height, 0.02]} />
         <meshStandardMaterial color="#bcd9f0" emissive="#6f97bd" emissiveIntensity={0.35} roughness={0.1} />
@@ -97,7 +97,7 @@ export function Floor({ dimensions }: { dimensions: RoomDimensions }) {
         <meshStandardMaterial color="#8b7355" roughness={0.6} />
       </mesh>
 
-      <Window backZ={backZ} />
+      <Window backZ={backZ} roomWidth={width} />
     </group>
   )
 }

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { deviceKey } from '../../shared/devices'
+import { createRoom, findRoom } from '../../shared/home'
 import type { AppSettings, DriverStatus } from '../../shared/types'
 import { DeviceCard } from './components/DeviceCard'
 import { RefreshIcon, SettingsIcon } from './components/Icons'
 import { SettingsModal, type Integration } from './components/SettingsModal'
 import { Sidebar, type AppSection } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
+import { NewRoomDialog } from './features/rooms/NewRoomDialog'
 import { RoomExperience } from './features/rooms/RoomExperience'
+import { useHomeLayout } from './features/rooms/useHomeLayout'
 import { useDevices } from './hooks/useDevices'
 
 /** Ao voltar para uma tela, so consulta a nuvem de novo se o dado tiver mais que isso. */
@@ -36,6 +39,14 @@ export function App(): React.JSX.Element {
   const anyConnected = !!(settings?.tuya.hasCredentials || settings?.thinq.hasToken)
   const connected = !!(isTuya ? settings?.tuya.hasCredentials : settings?.thinq.hasToken)
   const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send } = useDevices(anyConnected, revision)
+  const [editingRoom, setEditingRoom] = useState(false)
+  const [showNewRoom, setShowNewRoom] = useState(false)
+  const [roomChoice, setRoomChoice] = useState<string | null>(null)
+  const { layout, commit } = useHomeLayout(devices, editingRoom)
+  // Escolha desta sessao, depois a ultima salva, depois o comodo base.
+  const selectedRoomId = layout
+    ? [roomChoice, layout.selectedRoomId, layout.baseRoomId].find((id) => id && findRoom(layout, id)) ?? null
+    : null
   const isRooms = selectedSection === 'rooms'
   const visibleDevices = isRooms ? devices : devices.filter((device) => device.driverId === driverId)
   const driverError = isRooms
@@ -84,6 +95,25 @@ export function App(): React.JSX.Element {
     configured: fallback.configured
   }))
 
+  const onSelectRoom = (roomId: string): void => {
+    onSelectSection('rooms')
+    setRoomChoice(roomId)
+    // Lembrar o comodo e conveniencia: se a gravacao falhar, a escolha vale ao menos nesta sessao.
+    if (layout && layout.selectedRoomId !== roomId) void commit({ ...layout, selectedRoomId: roomId })
+  }
+
+  const onCreateRoom = async (name: string): Promise<string | null> => {
+    if (!layout) return 'O layout ainda não carregou.'
+    const created = createRoom(layout, name)
+    if (!created.roomId) return 'Não foi possível criar o cômodo (nome vazio ou limite de cômodos).'
+    const failure = await commit({ ...created.layout, selectedRoomId: created.roomId })
+    if (failure) return failure
+    setShowNewRoom(false)
+    onSelectSection('rooms')
+    setRoomChoice(created.roomId)
+    return null
+  }
+
   const onSelectSection = (section: AppSection): void => {
     setSelectedSection(section)
     setDismissed(null)
@@ -101,7 +131,8 @@ export function App(): React.JSX.Element {
         <div className="body">
           <Sidebar statuses={integrationStatuses} devices={devices} selectedSection={selectedSection}
             selectedIntegration={selectedIntegration} onSelectSection={onSelectSection}
-            onOpenSettings={() => setShowSettings(true)} />
+            onOpenSettings={() => setShowSettings(true)} layout={layout} selectedRoomId={selectedRoomId}
+            onSelectRoom={onSelectRoom} onNewRoom={() => setShowNewRoom(true)} locked={editingRoom} />
           <main className="content" aria-busy={settingsLoading || loading}>
             {settingsError && (
               <div className="panel" role="alert">
@@ -111,7 +142,8 @@ export function App(): React.JSX.Element {
             )}
 
             {isRooms ? (
-              <RoomExperience devices={visibleDevices} loading={settingsLoading || loading} pending={pending}
+              <RoomExperience layout={layout} roomId={selectedRoomId} onCommitLayout={commit}
+                onEditingChange={setEditingRoom} devices={visibleDevices} loading={settingsLoading || loading} pending={pending}
                 error={visibleError} connected={anyConnected} onRefresh={() => { setDismissed(null); void refresh() }}
                 onOpenSettings={() => setShowSettings(true)} onCommand={(device, command) => void send(device, command)} />
             ) : (
@@ -183,6 +215,7 @@ export function App(): React.JSX.Element {
           </main>
         </div>
       </div>
+      {showNewRoom && <NewRoomDialog onCreate={onCreateRoom} onClose={() => setShowNewRoom(false)} />}
       {showSettings && settings && (
         <SettingsModal settings={settings} initialIntegration={selectedIntegration}
           onClose={() => setShowSettings(false)} onSaved={onSaved} />

@@ -1,6 +1,6 @@
 # Experiência da casa: cômodos 3D, grupos e automações
 
-Status: plano em andamento. Já existe no app uma sala 3D desenhada a partir de um layout salvo em `userData/home-layout.json`, com os aparelhos conectados, lista lateral, modal de controles e estado comum por chave composta. Ainda não há edição nem mais de um cômodo.
+Status: Etapa 1 implementada. Os cômodos 3D são desenhados a partir de um layout salvo em `userData/home-layout.json`, com modo edição, tamanho ajustável, vários cômodos, apelidos locais, lista "Sem cômodo", modal de controles e estado comum por chave composta. Falta medir no hardware real (item 6).
 
 Prioridade definida em 14/10/2026: **cômodo 3D primeiro**. Direção escolhida: **maquete isométrica elegante, fácil de montar e clicar**.
 
@@ -236,12 +236,13 @@ Já concluído:
 - **Layout como dados:** `defaultRoom()` + `HomeLayout` em `shared/home.ts`, com catálogo local de assets; a cena desenha móveis e aparelhos a partir de `RoomItem[]`, sem mudança visível.
 - **Persistência:** `main/home-layout-store.ts` com versão, revisão, validação, escrita atômica, `.bak` e recuperação de arquivo inválido (preservado como `home-layout.invalid-*.json`); IPC `home-layout:get`, `home-layout:save` e `home-layout:place-devices`. Aparelhos novos entram no cômodo base.
 
+- **Modo edição:** arrastar com encaixe de 25 cm (AC só desliza nas paredes), girar 90°, adicionar móveis do catálogo, remover itens, apelidos locais, salvar/cancelar e teclado (setas, R, Delete, Esc). A navegação fica travada até salvar ou cancelar.
+- **Tamanho da sala:** largura e profundidade de 5–10 m × 4–9 m; os itens acompanham o canto das paredes e o que sobra é trazido para dentro.
+- **Vários cômodos:** Novo cômodo a partir do padrão original, renomear, excluir (exceto o base, aparelhos ficam sem cômodo), mover aparelho entre cômodos com confirmação e lista "Sem cômodo". Aparelho fora da conta continua no lugar, apagado e marcado como indisponível.
+
 Sequência restante:
 
-3. **Modo edição:** mover, girar, adicionar e remover itens, com salvar/cancelar e teclado.
-4. **Tamanho da sala:** largura e profundidade com limites, trazendo para dentro o que ficar fora.
-5. **Vários cômodos:** Novo cômodo a partir do padrão original, renomear, excluir (exceto o base), mover aparelho entre cômodos e lista "Sem cômodo".
-6. Verificar qualidade visual e funcionamento nas condições abaixo.
+6. Verificar qualidade visual e funcionamento nas condições abaixo no Electron e hardware reais (até aqui verificado com testes e no renderer com aparelhos simulados).
 
 **Pronto quando:**
 

@@ -60,3 +60,30 @@ export const SnowflakeIcon = ({ size = 15 }: IconProps): React.JSX.Element => (
     <path d="M12 2v20M4.2 6.5l15.6 9M19.8 6.5l-15.6 9" />
   </svg>
 )
+
+export const EditIcon = ({ size = 15 }: IconProps): React.JSX.Element => (
+  <svg {...base(size)}>
+    <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+    <path d="m13.5 6.5 4 4" />
+  </svg>
+)
+
+export const PlusIcon = ({ size = 15 }: IconProps): React.JSX.Element => (
+  <svg {...base(size)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+
+export const RotateIcon = ({ size = 15 }: IconProps): React.JSX.Element => (
+  <svg {...base(size)}>
+    <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+    <path d="M20 4v7h-7" />
+  </svg>
+)
+
+export const TrashIcon = ({ size = 15 }: IconProps): React.JSX.Element => (
+  <svg {...base(size)}>
+    <path d="M4 7h16M10 11v6M14 11v6" />
+    <path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+  </svg>
+)

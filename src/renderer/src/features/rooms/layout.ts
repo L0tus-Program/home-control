@@ -1,6 +1,6 @@
-import { WALL_HEIGHT, type Room, type Vec3 } from '../../../../shared/home'
+import { WALL_HEIGHT, wallsOf, type RoomDimensions, type Vec3 } from '../../../../shared/home'
 
-export { AC_SCALE, type Vec3 } from '../../../../shared/home'
+export { AC_SCALE, wallsOf, type RoomDimensions, type Vec3 } from '../../../../shared/home'
 
 /**
  * Medidas fixas da maquete em metros. Largura e profundidade vem do comodo
@@ -13,13 +13,6 @@ export const ROOM = {
   wallHeight: WALL_HEIGHT,
   wallThickness: 0.12
 } as const
-
-export type RoomDimensions = Room['dimensions']
-
-/** Face interna de cada parede. */
-export function wallsOf({ width, depth }: RoomDimensions): { backZ: number; leftX: number } {
-  return { backZ: -depth / 2, leftX: -width / 2 }
-}
 
 /** Para onde a camera olha: o centro da area de estar. */
 export function cameraTarget(dimensions: RoomDimensions): Vec3 {
