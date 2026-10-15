@@ -46,7 +46,8 @@ function mergeList(current: unknown, update: unknown[]): unknown[] {
     const unit = record(entry) ? entry.unit : undefined
     const index = unit === undefined ? -1 : next.findIndex((item) => record(item) && item.unit === unit)
     if (index >= 0 && record(entry)) next[index] = { ...(next[index] as Record<string, unknown>), ...entry }
-    else next.push(entry)
+    // Reaplicar o mesmo relato nao duplica a entrada.
+    else if (!next.some((item) => JSON.stringify(item) === JSON.stringify(entry))) next.push(entry)
   }
   return next
 }

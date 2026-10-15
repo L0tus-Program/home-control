@@ -40,7 +40,16 @@ interface Known {
   rev: number
   /** Quando entrou no cache; uma listagem mais velha não o remove. */
   at: number
+  /** Relatos recentes, para reaplicar sobre uma leitura da nuvem que começou antes deles. */
+  history?: Array<{ rev: number; updates: TuyaStatusItem[] }>
+  /** Carimbo da leitura da nuvem que escreveu a base; uma leitura mais velha não a substitui. */
+  baseStamp: number
+  /** Revisão do último relato que saiu do histórico; leitura anterior a ele não dá para refazer. */
+  prunedUpTo?: number
 }
+
+/** Relatos guardados por lâmpada; uma leitura da nuvem leva segundos, não centenas de relatos. */
+const HISTORY_LIMIT = 32
 
 /** Integração oficial Tuya Cloud, independente de LG ThinQ. */
 export class TuyaDriver implements Driver {
@@ -81,14 +90,14 @@ export class TuyaDriver implements Driver {
 
   private async list(): Promise<Device[]> {
     const startedAt = Date.now()
-    // A revisão vale de antes da consulta: o estado já vem nela.
-    const revs = new Map([...this.known].map(([id, entry]) => [id, entry.rev]))
+    // O carimbo vale de antes da consulta: relatos depois dele são mais novos que ela.
+    const stamp = ++this.revision
     const list = await this.requireCloud().listDevices()
     const devices: Device[] = []
     const seen = new Set<string>()
     for (const info of list) {
       if (!LIGHT_CATEGORIES.has(info.category)) continue
-      const device = await this.hydrate(info, revs.get(info.id) ?? 0)
+      const device = await this.hydrate(info, stamp)
       if (device) { devices.push(device); seen.add(info.id) }
     }
     for (const [id, entry] of this.known) if (!seen.has(id) && entry.at < startedAt) this.known.delete(id)
@@ -96,27 +105,39 @@ export class TuyaDriver implements Driver {
   }
 
   async getDevice(deviceId: string): Promise<Device> {
-    const rev = this.known.get(deviceId)?.rev ?? 0
+    const stamp = ++this.revision
     const info = await this.requireCloud().getDevice(deviceId)
     if (!LIGHT_CATEGORIES.has(info.category)) throw new DriverError('Este tipo de aparelho Tuya ainda não tem controles no Home Control.')
-    const device = await this.hydrate(info, rev)
+    const device = await this.hydrate(info, stamp)
     if (!device) throw new DriverError('Este aparelho não é uma lâmpada controlável.')
     return device
   }
 
-  /** `rev`: revisão do cache quando a consulta que trouxe `info` começou. */
-  private async hydrate(info: TuyaApiDevice, rev: number): Promise<Device | null> {
+  /**
+   * `stamp`: carimbo de quando a consulta que trouxe `info` começou. A leitura é
+   * a base (corrige o que o canal perdeu) e os relatos posteriores a ela vão por
+   * cima. Se uma leitura mais nova já escreveu a base, ou se relatos necessários
+   * já saíram do histórico, esta leitura não substitui o cache.
+   */
+  private async hydrate(info: TuyaApiDevice, stamp: number): Promise<Device | null> {
     const status = info.status ?? await this.requireCloud().getStatus(info.id)
     const functions = await this.getFunctions(info.id)
     const fresh = { ...info, status: undefined }
     const current = this.known.get(info.id)
-    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
-    if (current && current.rev !== rev) {
+    if (current && (current.baseStamp > stamp || (current.prunedUpTo ?? 0) > stamp)) {
       current.info = { ...fresh, online: current.info.online }
       return this.build(current.info, current.status, functions)
     }
-    const device = this.build(info, status, functions)
-    if (device) this.known.set(info.id, { info: fresh, status, rev, at: Date.now() })
+    const newer = (current?.history ?? []).filter((entry) => entry.rev > stamp)
+    const merged = newer.reduce((base, entry) => mergeStatus(base, entry.updates), status)
+    const device = this.build(info, merged, functions)
+    if (device) {
+      this.known.set(info.id, {
+        info: current && newer.length > 0 ? { ...fresh, online: current.info.online } : fresh,
+        status: merged, rev: current?.rev ?? 0, at: current?.at ?? Date.now(), baseStamp: stamp,
+        history: current?.history, prunedUpTo: current?.prunedUpTo
+      })
+    }
     return device
   }
 
@@ -278,6 +299,9 @@ export class TuyaDriver implements Driver {
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }
         entry.rev = ++this.revision
+        const history = [...(entry.history ?? []), { rev: entry.rev, updates }]
+        if (history.length > HISTORY_LIMIT) entry.prunedUpTo = history[history.length - HISTORY_LIMIT - 1].rev
+        entry.history = history.slice(-HISTORY_LIMIT)
         const device = this.build(entry.info, entry.status, functions)
         if (device) listener.event({ type: 'state', device })
       },

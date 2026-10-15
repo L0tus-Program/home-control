@@ -179,3 +179,67 @@ test('leitura REST que comecou antes de um relato nao desfaz o relato', async (t
   broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'bright_value_v2', value: 1000 }] } })
   assert.equal(out.events.at(-1).device.state.power, true, 'o cache manteve o relato')
 })
+
+test('leitura REST e a base e os relatos chegados durante ela vao por cima', async (t) => {
+  const broker = fakeBroker()
+  let release
+  const api = sharingFixture({
+    getDevice: async (id) => {
+      await new Promise((resolve) => { release = resolve })
+      // A nuvem traz um brilho que o canal perdeu e a energia ainda antiga.
+      return { id, category: 'dj', name: 'Sala', online: true, status: [{ code: 'switch_led', value: false }, { code: 'bright_value_v2', value: 1000 }, { code: 'work_mode', value: 'white' }] }
+    }
+  })
+  const driver = new TuyaDriver(api, broker.connect)
+  const out = listen()
+  const handle = await driver.watch(out.listener)
+  t.after(() => handle.stop())
+  await until(() => out.statuses.includes('live'))
+  const reading = driver.getDevice('luz')
+  await tick(5)
+  broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'switch_led', value: true }] } })
+  release()
+  const device = await reading
+  assert.equal(device.state.power, true, 'relato mais novo vence')
+  assert.equal(device.state.brightness, 100, 'o resto vem da leitura')
+})
+
+test('leitura mais velha que termina depois nao substitui a mais nova; rajada alem do historico mantem o cache', async (t) => {
+  const broker = fakeBroker()
+  const releases = []
+  const replies = []
+  const api = sharingFixture({
+    getDevice: async (id) => {
+      const reply = replies.shift()
+      await new Promise((resolve) => releases.push(resolve))
+      return { id, category: 'dj', name: 'Sala', online: true, status: reply }
+    }
+  })
+  const driver = new TuyaDriver(api, broker.connect)
+  const out = listen()
+  const handle = await driver.watch(out.listener)
+  t.after(() => handle.stop())
+  await until(() => out.statuses.includes('live'))
+  const bright = (value) => [{ code: 'switch_led', value: true }, { code: 'bright_value_v2', value }, { code: 'work_mode', value: 'white' }]
+
+  // R1 (velha) e R2 (nova) em paralelo; R2 termina primeiro com um brilho que o canal perdeu.
+  replies.push(bright(10), bright(1000))
+  const r1 = driver.getDevice('luz')
+  await tick(5)
+  const r2 = driver.getDevice('luz')
+  await until(() => releases.length === 2)
+  releases[1]()
+  assert.equal((await r2).state.brightness, 100)
+  releases[0]()
+  assert.equal((await r1).state.brightness, 100, 'a leitura velha nao desfaz a nova')
+
+  // Rajada maior que o historico durante uma leitura: nao da para refazer, o cache vale.
+  replies.push(bright(10))
+  const r3 = driver.getDevice('luz')
+  await until(() => releases.length === 3)
+  for (let i = 0; i < 40; i++) broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'bright_value_v2', value: 500 + i }] } })
+  broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'work_mode', value: 'white' }] } })
+  releases[2]()
+  const after = await r3
+  assert.equal(after.state.brightness, Math.round(1 + ((539 - 10) / 990) * 99), 'brilho do ultimo relato, nao o da leitura velha')
+})
