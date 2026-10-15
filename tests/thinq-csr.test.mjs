@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createPrivateKey, createPublicKey, verify } from 'node:crypto'
+import { createPrivateKey, createPublicKey, generateKeyPairSync, verify } from 'node:crypto'
 import { loadSource } from './load-source.mjs'
 
-const { createCsr } = await loadSource('src/main/drivers/thinq/csr.ts')
+const { createCsr, buildCsr } = await loadSource('src/main/drivers/thinq/csr.ts')
 
 /** Leitor DER minimo: devolve [tag, conteudo, total] a partir de `offset`. */
 function readTlv(bytes, offset = 0) {
@@ -19,8 +19,8 @@ function readTlv(bytes, offset = 0) {
   return { tag, content: bytes.subarray(offset + header, offset + header + size), total: header + size, start: offset }
 }
 
-test('gera um CSR PKCS#10 com CN lg_thinq assinado pela chave gerada', () => {
-  const { csr, privateKeyPem } = createCsr()
+test('gera um CSR PKCS#10 com CN lg_thinq assinado pela chave gerada', async () => {
+  const { csr, privateKeyPem } = await createCsr()
   assert.match(csr, /^[A-Za-z0-9+/]+=*$/, 'base64 sem cabecalho nem quebras')
   const der = Buffer.from(csr, 'base64')
 
@@ -42,6 +42,11 @@ test('gera um CSR PKCS#10 com CN lg_thinq assinado pela chave gerada', () => {
   assert.match(privateKeyPem, /^-----BEGIN PRIVATE KEY-----/)
 })
 
-test('cada CSR usa uma chave nova', () => {
-  assert.notEqual(createCsr().privateKeyPem, createCsr().privateKeyPem)
+test('cada CSR usa uma chave nova', async () => {
+  assert.notEqual((await createCsr()).privateKeyPem, (await createCsr()).privateKeyPem)
+})
+
+test('recusa chave que nao e RSA', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  assert.throws(() => buildCsr(privateKey, publicKey, 'x'), /RSA/)
 })

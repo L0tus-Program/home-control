@@ -126,7 +126,7 @@ O transporte MQTT entra por injeção (uma fábrica `connect(options) → client
 
 ### Etapa 0: reconhecimento com as contas reais (curta)
 
-Modo de diagnóstico só em desenvolvimento (variável de ambiente), que conecta os dois MQTTs com as credenciais já salvas e grava as mensagens **sanitizadas** (sem IDs reais, tokens ou chaves) em `userData/realtime-capture.jsonl`. Com o ar e as duas lâmpadas, mudar o estado pelo controle remoto e pelo app do celular. Respostas esperadas:
+Modo de diagnóstico só em desenvolvimento (variável de ambiente), que conecta os dois MQTTs com as credenciais já salvas e grava as mensagens **sanitizadas** (sem IDs reais, nomes, tokens ou chaves) em `userData/realtime-capture-<data>.jsonl`. Roda sem janela e recusa rodar com o app aberto. Com `HOME_CONTROL_REALTIME_PROBE=1`, provoca mensagens: muda o brilho das lâmpadas acesas e volta, **acende por alguns segundos as apagadas** e, só se o ar já estiver ligado, sobe 1 °C e volta. Com o ar e as duas lâmpadas, mudar o estado pelo controle remoto e pelo app do celular. Respostas esperadas:
 
 - Host real do `mqttServer` da LG, porta e ALPN; se o certificado é aceito; código de erro de "já assinado".
 - Forma exata do `report` do **nosso** modelo de ar (parcial ou completo, temperatura em `temperatureInUnits` ou em `temperature`).

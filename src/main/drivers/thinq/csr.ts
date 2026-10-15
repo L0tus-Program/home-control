@@ -1,4 +1,5 @@
-import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto'
+import { generateKeyPair, sign, type KeyObject } from 'node:crypto'
+import { promisify } from 'node:util'
 
 /**
  * Pedido de certificado (PKCS#10) para o MQTT da ThinQ Connect.
@@ -34,12 +35,15 @@ export interface ThinqCsr {
   csr: string
 }
 
-export function createCsr(commonName = 'lg_thinq'): ThinqCsr {
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, publicExponent: 65537 })
+/** Assincrono: gerar RSA 2048 leva centenas de ms e nao pode travar o processo principal. */
+export async function createCsr(commonName = 'lg_thinq'): Promise<ThinqCsr> {
+  const { privateKey, publicKey } = await promisify(generateKeyPair)('rsa', { modulusLength: 2048, publicExponent: 65537 })
   return { privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), csr: buildCsr(privateKey, publicKey, commonName) }
 }
 
 export function buildCsr(privateKey: KeyObject, publicKey: KeyObject, commonName: string): string {
+  // O OID da assinatura e fixo em RSA; outra chave geraria um CSR incoerente.
+  if (privateKey.asymmetricKeyType !== 'rsa' || publicKey.asymmetricKeyType !== 'rsa') throw new Error('O CSR da LG exige chave RSA.')
   const subject = sequence(tlv(0x31, sequence(OID_COMMON_NAME, tlv(0x0c, Buffer.from(commonName, 'utf8')))))
   const info = sequence(
     tlv(0x02, Buffer.from([0x00])),

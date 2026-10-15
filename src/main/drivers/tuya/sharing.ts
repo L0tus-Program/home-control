@@ -80,7 +80,8 @@ function devicesFrom(value: unknown): TuyaApiDevice[] {
       throw new DriverError('Estado inválido retornado pela Tuya.')
     }
     // Mantém somente os dados usados pelo app; respostas também podem conter chaves locais.
-    const local = item.support_local === true ? localStrategy(item.local_strategy) : undefined
+    // Com controle local o MQTT usa outro tópico, mesmo sem tradução conhecida.
+    const local = item.support_local === true ? localStrategy(item.local_strategy) ?? { dps: {} } : undefined
     return {
       id: item.id, name: item.name, category: item.category, online: item.online,
       ...(typeof item.product_name === 'string' ? { product_name: item.product_name } : {}),
