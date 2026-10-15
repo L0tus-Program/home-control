@@ -1,5 +1,5 @@
 import type { IClientOptions, MqttClient } from 'mqtt'
-import type { Capability, Command, Device, DeviceState } from '../../../shared/types'
+import type { Capability, Command, Device, DeviceState, OptionKey } from '../../../shared/types'
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
@@ -52,6 +52,15 @@ interface AcLayout {
   tempResource?: string
   /** Alvos graváveis que este modelo expoe, em ordem de preferencia. */
   targets: Partial<Record<TargetKey, RangeValues>>
+  /** Ajustes liga/desliga que o perfil declara como graváveis. */
+  options: OptionKey[]
+}
+
+/** Onde cada ajuste mora no perfil e no estado da ThinQ Connect. */
+const OPTION_PATHS: Record<OptionKey, [resource: string, field: string]> = {
+  powerSave: ['powerSave', 'powerSaveEnabled'],
+  swingVertical: ['windDirection', 'rotateUpDown'],
+  swingHorizontal: ['windDirection', 'rotateLeftRight']
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -117,12 +126,21 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
     if (range) targets[key] = range
   }
 
+  const options = (Object.keys(OPTION_PATHS) as OptionKey[]).filter((key) => {
+    const [resourceName, field] = OPTION_PATHS[key]
+    const prop = descriptor(asRecord(property[resourceName])[field])
+    // Precisa ser legivel (o botao mostra o estado) e aceitar ligar e desligar.
+    const accepted = Array.isArray(prop?.value?.w) ? prop.value.w : []
+    return isWritable(prop) && Boolean(prop?.mode?.includes('r')) && prop?.type === 'boolean' && accepted.includes(true) && accepted.includes(false)
+  })
+
   return {
     modes: writableOptions(jobMode),
     fanKey,
     fanOptions: writableOptions(fan),
     tempResource: resource,
-    targets
+    targets,
+    options
   }
 }
 
@@ -152,8 +170,31 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
       layout.fanKey && typeof airFlow[layout.fanKey] === 'string'
         ? (airFlow[layout.fanKey] as string)
         : undefined,
-    humidity: numeric(asRecord(raw.airQualitySensor).humidity)
+    humidity: numeric(asRecord(raw.airQualitySensor).humidity),
+    ...readOptions(raw, layout),
+    ...readAirQuality(asRecord(raw.airQualitySensor))
   }
+}
+
+/** Sensor de particulas: so os valores que o modelo publica. */
+function readAirQuality(sensor: Record<string, unknown>): Pick<DeviceState, 'airQuality'> {
+  const value = (key: string): number | undefined => {
+    const raw = sensor[key]
+    return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : undefined
+  }
+  const quality = { pm1: value('PM1'), pm25: value('PM2'), pm10: value('PM10') }
+  const present = Object.fromEntries(Object.entries(quality).filter(([, v]) => v !== undefined))
+  return Object.keys(present).length > 0 ? { airQuality: present } : {}
+}
+
+function readOptions(raw: Record<string, unknown>, layout: AcLayout): Pick<DeviceState, 'options'> {
+  const options: Partial<Record<OptionKey, boolean>> = {}
+  for (const key of layout.options) {
+    const [resourceName, field] = OPTION_PATHS[key]
+    const value = asRecord(raw[resourceName])[field]
+    if (typeof value === 'boolean') options[key] = value
+  }
+  return Object.keys(options).length > 0 ? { options } : {}
 }
 
 /** No estado, as temperaturas vem numa lista por unidade, igual ao perfil. */
@@ -193,6 +234,7 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   }
   if (layout.modes.length > 0) capabilities.push({ kind: 'mode', options: layout.modes })
   if (layout.fanOptions.length > 0) capabilities.push({ kind: 'fan', options: layout.fanOptions })
+  for (const key of layout.options) capabilities.push({ kind: 'option', key })
   return capabilities
 }
 
@@ -374,6 +416,13 @@ export class ThinqDriver implements Driver {
         await client.control(deviceId, {
           [layout.tempResource]: { [key]: command.value, unit: 'C' }
         })
+        return
+      }
+
+      case 'option': {
+        if (!layout.options.includes(command.key)) throw new DriverError('Este modelo nao tem esse ajuste.')
+        const [resourceName, field] = OPTION_PATHS[command.key]
+        await client.control(deviceId, { [resourceName]: { [field]: command.value } })
         return
       }
 

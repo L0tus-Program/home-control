@@ -7,6 +7,9 @@
 
 export type DeviceKind = 'air-conditioner' | 'light' | 'unknown'
 
+/** Ajustes liga/desliga do aparelho, alem da energia. */
+export type OptionKey = 'powerSave' | 'swingVertical' | 'swingHorizontal'
+
 /** O que um aparelho aceita. A UI desenha os controles a partir disto. */
 export type Capability =
   | { kind: 'power' }
@@ -17,6 +20,7 @@ export type Capability =
   | { kind: 'color' }
   /** Tom do branco: 0 e o mais quente, 100 o mais frio. */
   | { kind: 'colorTemperature' }
+  | { kind: 'option'; key: OptionKey }
 
 export type CapabilityKind = Capability['kind']
 
@@ -39,6 +43,9 @@ export interface DeviceState {
   color?: ColorState
   /** Tom do branco, 0 (quente) a 100 (frio). */
   colorTemperature?: number
+  options?: Partial<Record<OptionKey, boolean>>
+  /** Particulas no ar (ug/m3), quando o aparelho tem sensor. */
+  airQuality?: { pm1?: number; pm25?: number; pm10?: number }
   humidity?: number
 }
 
@@ -61,6 +68,7 @@ export type Command =
   | { type: 'brightness'; value: number }
   | { type: 'color'; value: ColorState }
   | { type: 'colorTemperature'; value: number }
+  | { type: 'option'; key: OptionKey; value: boolean }
 
 export interface DriverStatus {
   id: string

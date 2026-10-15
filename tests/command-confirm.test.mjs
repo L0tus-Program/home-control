@@ -94,4 +94,6 @@ test('predicados de confirmacao por tipo de comando', () => {
   assert.equal(confirmsCommand({ type: 'color', value: { hue: 120, saturation: 80 } })(device({})), false)
   assert.equal(confirmsCommand({ type: 'mode', value: 'COOL' })(device({ mode: 'HEAT' })), false)
   assert.equal(confirmsCommand({ type: 'fan', value: 'LOW' })(device({ fan: 'LOW' })), true)
+  assert.equal(confirmsCommand({ type: 'option', key: 'powerSave', value: true })(device({ options: { powerSave: true } })), true)
+  assert.equal(confirmsCommand({ type: 'option', key: 'powerSave', value: false })(device({})), false, 'sem o ajuste no estado nao confirma')
 })
