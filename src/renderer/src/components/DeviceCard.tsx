@@ -67,6 +67,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
   const fans = capability(device, 'fan')
   const brightness = capability(device, 'brightness')
   const hasColor = capability(device, 'color') !== undefined
+  const hasColorTemperature = capability(device, 'colorTemperature') !== undefined
   const controllable = device.capabilities.length > 0
 
   const className = [
@@ -126,11 +127,12 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
         />
       )}
 
-      {(brightness || hasColor) && (
+      {(brightness || hasColor || hasColorTemperature) && (
         <LightControls
           brightness={brightness}
           hasColor={hasColor}
-          value={{ brightness: state.brightness, color: state.color }}
+          hasColorTemperature={hasColorTemperature}
+          value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature }}
           disabled={offline || !state.power || busy}
           onCommand={onCommand}
         />

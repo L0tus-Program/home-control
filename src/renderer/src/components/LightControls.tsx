@@ -1,10 +1,12 @@
 import type { Capability, ColorState, Command } from '../../../shared/types'
+import { WHITE_TONE_TRACK, whiteTone, whiteToneLabel } from '../lightTone'
 import { Slider } from './Slider'
 
 interface Props {
   brightness?: Extract<Capability, { kind: 'brightness' }>
   hasColor: boolean
-  value: { brightness?: number; color?: ColorState }
+  hasColorTemperature?: boolean
+  value: { brightness?: number; color?: ColorState; colorTemperature?: number }
   disabled: boolean
   onCommand: (command: Command) => void
 }
@@ -12,15 +14,16 @@ interface Props {
 const HUE_RAINBOW =
   'linear-gradient(90deg, #ff4d4d, #ffd93d, #6bff6b, #4de0ff, #4d6bff, #d44dff, #ff4d4d)'
 
-/** Lampada branca quando nao ha cor; senao, a cor escolhida. */
-function cssColor(color: ColorState | undefined, lightness = 55): string {
-  if (!color) return `hsl(0, 0%, ${lightness + 25}%)`
+/** A cor escolhida; no modo branco, o tom do branco (ou branco neutro sem tom). */
+function cssColor(color: ColorState | undefined, lightness = 55, colorTemperature?: number): string {
+  if (!color) return colorTemperature === undefined ? `hsl(0, 0%, ${lightness + 25}%)` : whiteTone(colorTemperature)
   return `hsl(${color.hue}, ${color.saturation}%, ${lightness}%)`
 }
 
 export function LightControls({
   brightness,
   hasColor,
+  hasColorTemperature = false,
   value,
   disabled,
   onCommand
@@ -30,7 +33,8 @@ export function LightControls({
   const range = { min: brightness?.min ?? 1, max: brightness?.max ?? 100 }
   const percent = Math.round(level)
 
-  const glow = cssColor(color)
+  const tone = value.colorTemperature
+  const glow = cssColor(color, 55, tone)
 
   return (
     <>
@@ -58,6 +62,20 @@ export function LightControls({
           knobColor={glow}
           format={() => `${percent}%`}
           onChange={(next) => onCommand({ type: 'brightness', value: next })}
+        />
+      )}
+
+      {hasColorTemperature && (
+        <Slider
+          label="Tom do branco"
+          value={tone ?? 50}
+          min={0}
+          max={100}
+          disabled={disabled}
+          trackBackground={WHITE_TONE_TRACK}
+          knobColor={whiteTone(tone ?? 50)}
+          format={(next) => whiteToneLabel(next)}
+          onChange={(next) => onCommand({ type: 'colorTemperature', value: next })}
         />
       )}
 

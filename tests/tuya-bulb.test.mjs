@@ -80,3 +80,49 @@ test('HSV inválido não causa falha na leitura do aparelho', () => {
   assert.equal(state.power, true)
   assert.equal(state.color, undefined)
 })
+
+test('tom do branco: le e envia temp_value na faixa declarada, passando ao modo branco', async () => {
+  const { readState, colorTemperatureCommands, bulbCapabilities } = await loadSource('src/main/drivers/tuya/bulb.ts')
+  const functions = [
+    { code: 'switch_led', type: 'Boolean', values: '{}' },
+    { code: 'work_mode', type: 'Enum', values: '{"range":["white","colour"]}' },
+    { code: 'temp_value_v2', type: 'Integer', values: '{"min":0,"max":1000,"step":10}' }
+  ]
+  const white = [{ code: 'switch_led', value: true }, { code: 'work_mode', value: 'white' }, { code: 'temp_value_v2', value: 250 }]
+  assert.equal(readState(white, true, functions).colorTemperature, 25)
+  assert.equal(bulbCapabilities(white, functions).colorTemperature, true)
+  assert.deepEqual(colorTemperatureCommands(white, 80, functions), [{ code: 'temp_value_v2', value: 800 }])
+  assert.deepEqual(colorTemperatureCommands(white, 33.3, functions), [{ code: 'temp_value_v2', value: 330 }], 'respeita o passo')
+
+  const colour = [{ code: 'switch_led', value: true }, { code: 'work_mode', value: 'colour' }, { code: 'temp_value_v2', value: 0 }]
+  assert.deepEqual(colorTemperatureCommands(colour, 0, functions), [{ code: 'work_mode', value: 'white' }, { code: 'temp_value_v2', value: 0 }])
+
+  // v1 sem faixa declarada: 0-255.
+  const v1 = [{ code: 'switch_led', value: true }, { code: 'temp_value', value: 255 }]
+  assert.equal(readState(v1, true, []).colorTemperature, 100)
+  assert.deepEqual(colorTemperatureCommands(v1, 50, []), [{ code: 'temp_value', value: 128 }])
+
+  const none = [{ code: 'switch_led', value: true }]
+  assert.equal('colorTemperature' in readState(none, true, []), false)
+  assert.equal(bulbCapabilities(none, []).colorTemperature, false)
+  assert.throws(() => colorTemperatureCommands(none, 50, []), /tom do branco/)
+})
+
+test('confirmacao do tom do branco aceita arredondamento', async () => {
+  const { confirmsCommand } = await loadSource('src/main/drivers/registry.ts', {
+    '../store': `
+      export const getToken = () => null
+      export const getCountry = () => 'BR'
+      export const getClientId = () => 'c'
+      export const getTuyaCredentials = () => null
+      export const getTuyaRegion = () => 'us'
+      export const getTuyaSession = () => null
+      export const getThinqMqttCredentials = () => null
+      export const setThinqMqttCredentials = () => {}
+      export const setTuyaSession = () => {}
+    `
+  })
+  const matches = confirmsCommand({ type: 'colorTemperature', value: 40 })
+  assert.equal(matches({ state: { colorTemperature: 41 } }), true)
+  assert.equal(matches({ state: { colorTemperature: 60 } }), false)
+})
