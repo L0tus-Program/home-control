@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deviceKey } from '../../../shared/devices'
 import type { Command, Device, DriverStatus, RealtimeStatus } from '../../../shared/types'
+
+/** Aviso do aparelho na tela; some sozinho depois de um tempo. */
+export interface DeviceNotice {
+  id: number
+  title: string
+  message: string
+}
+
+const NOTICE_TTL_MS = 15_000
 import { applyDeviceEvents } from './deviceEvents'
 
 /** Enquanto a nuvem confirma, a UI ja mostra o valor novo. */
@@ -100,6 +109,8 @@ export interface DevicesApi {
   /** So vai a nuvem se o dado tiver mais de maxAgeMs (ou nunca tiver chegado). */
   refreshIfStale: (maxAgeMs: number, driverId?: string) => void
   send: (device: Device, command: Command) => Promise<void>
+  notices: DeviceNotice[]
+  dismissNotice: (id: number) => void
 }
 
 /**
@@ -112,6 +123,9 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [realtime, setRealtime] = useState<Record<string, RealtimeStatus>>({})
+  const [notices, setNotices] = useState<DeviceNotice[]>([])
+  const noticeId = useRef(0)
+  const dismissNotice = useCallback((id: number) => setNotices((current) => current.filter((notice) => notice.id !== id)), [])
 
   // Evita que uma resposta atrasada sobrescreva um refresh mais novo.
   const requestId = useRef(0)
@@ -191,6 +205,12 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
         const applied = applyDeviceEvents(current.devices, batch, pendingKeys.current)
         return applied.devices === current.devices ? current : { ...current, devices: applied.devices }
       })
+      for (const event of batch.events) {
+        if (event.type !== 'notice') continue
+        const notice = { id: ++noticeId.current, title: event.title, message: event.message }
+        setNotices((current) => [...current.slice(-3), notice])
+        timers.set(`notice:${notice.id}`, setTimeout(() => { timers.delete(`notice:${notice.id}`); dismissNotice(notice.id) }, NOTICE_TTL_MS))
+      }
       const fresh = seen.unknown.filter((key) => !unknownSeen.has(key))
       for (const key of fresh) unknownSeen.add(key)
       if (seen.needsRefresh || fresh.length > 0) refreshSoon(batch.driverId)
@@ -201,8 +221,9 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
       stopEvents()
       stopStatus()
       for (const timer of timers.values()) clearTimeout(timer)
+      setNotices([])
     }
-  }, [enabled, refresh])
+  }, [enabled, refresh, dismissNotice])
 
   useEffect(() => {
     // So limpa quando as credenciais mudam ou a casa e desconectada.
@@ -259,5 +280,5 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
     [home.statuses, realtime]
   )
 
-  return { devices: home.devices, statuses, loading, pending, error, refresh, refreshIfStale, send }
+  return { devices: home.devices, statuses, loading, pending, error, refresh, refreshIfStale, send, notices, dismissNotice }
 }

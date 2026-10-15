@@ -47,6 +47,16 @@ function Segmented({ label, options, active, disabled, format, onPick }: Segment
   )
 }
 
+/** O que resta do filtro, quando da para saber; senao, as horas de uso. */
+export function filterReading(filter: Device['state']['filter']): string | undefined {
+  if (!filter) return undefined
+  if (filter.remainingPercent !== undefined) return `${Math.round(filter.remainingPercent)}%`
+  if (filter.lifetimeHours !== undefined && filter.usedHours !== undefined) {
+    return `${Math.max(0, Math.round(100 - (filter.usedHours / filter.lifetimeHours) * 100))}%`
+  }
+  return filter.usedHours !== undefined ? `${Math.round(filter.usedHours)} h de uso` : undefined
+}
+
 export function DeviceControlModal({ device, busy, onClose, onCommand }: Props): React.JSX.Element {
   const { state } = device
   const offline = device.driverId === 'tuya' && !state.online
@@ -128,13 +138,14 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
 
         <DeviceExtras device={device} disabled={disabled} onCommand={onCommand} />
 
-        {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality) && (
+        {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality || state.filter) && (
           <div className="readings">
             {state.currentTemperature !== undefined && <div><div className="reading__label">Ambiente</div><div className="reading__value">{Math.round(state.currentTemperature)}°C</div></div>}
             {state.humidity !== undefined && <div><div className="reading__label">Umidade</div><div className="reading__value">{Math.round(state.humidity)}%</div></div>}
             {state.airQuality?.pm1 !== undefined && <div><div className="reading__label">PM1</div><div className="reading__value">{Math.round(state.airQuality.pm1)}</div></div>}
             {state.airQuality?.pm25 !== undefined && <div><div className="reading__label">PM2.5</div><div className="reading__value">{Math.round(state.airQuality.pm25)}</div></div>}
             {state.airQuality?.pm10 !== undefined && <div><div className="reading__label">PM10</div><div className="reading__value">{Math.round(state.airQuality.pm10)}</div></div>}
+            {filterReading(state.filter) && <div><div className="reading__label">Filtro</div><div className="reading__value">{filterReading(state.filter)}</div></div>}
           </div>
         )}
       </section>

@@ -40,6 +40,9 @@ export function applyDeviceEvents(devices: Device[], batch: DeviceEventBatch, pe
   for (const event of batch.events) {
     if (event.type === 'refresh') {
       needsRefresh = true
+    } else if (event.type === 'notice') {
+      // Aviso nao muda o estado; quem mostra e o useDevices.
+      continue
     } else if (event.type === 'state') {
       // Um driver so fala dos proprios aparelhos.
       if (event.device.driverId !== batch.driverId) continue

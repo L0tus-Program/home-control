@@ -1,4 +1,4 @@
-import { BrowserWindow, powerMonitor } from 'electron'
+import { BrowserWindow, Notification, powerMonitor } from 'electron'
 import { publicDevice } from '../../shared/devices'
 import type { Device, DeviceEvent, DeviceEventBatch, RealtimeStatus } from '../../shared/types'
 import { currentDrivers, onDriversChanged } from '../drivers/registry'
@@ -20,11 +20,23 @@ function publicEvent(event: DeviceEvent): DeviceEvent {
   return event.type === 'state' ? { type: 'state', device: publicDevice(event.device) } : event
 }
 
+/** Com a janela fora de foco, o aviso tambem vira notificacao do sistema; em foco, basta o do app. */
+function notify(batch: DeviceEventBatch): void {
+  if (BrowserWindow.getFocusedWindow()) return
+  for (const event of batch.events) {
+    if (event.type !== 'notice') continue
+    try {
+      if (Notification.isSupported()) new Notification({ title: event.title, body: event.message }).show()
+    } catch { /* sem notificacao do sistema, fica o aviso no app */ }
+  }
+}
+
 export function startRealtime(): void {
   if (hub) return
   const current = new RealtimeHub({
     events: (batch): void => {
       if (process.env.HOME_CONTROL_REALTIME_DEBUG === '1') console.log('[tempo real]', batch.driverId, batch.events.map((event) => event.type).join(','))
+      notify(batch)
       broadcast('devices:events', { driverId: batch.driverId, events: batch.events.map(publicEvent) } satisfies DeviceEventBatch)
     },
     status: (statuses) => {

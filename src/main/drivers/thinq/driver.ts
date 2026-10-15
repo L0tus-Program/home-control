@@ -56,6 +56,8 @@ interface AcLayout {
   options: OptionKey[]
   /** Timers relativos (`timer.relativeHourToStart/Stop`) que o modelo aceita. */
   timers: TimerAction[]
+  /** O perfil declara avisos (`notification.push`): so entao assinamos. */
+  push: boolean
 }
 
 /** A LG programa timers relativos em horas e minutos; 24 h cobre o uso comum. */
@@ -162,7 +164,8 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
     tempResource: resource,
     targets,
     options,
-    timers
+    timers,
+    push: Array.isArray(asRecord(profile.notification).push) && (asRecord(profile.notification).push as unknown[]).length > 0
   }
 }
 
@@ -195,7 +198,8 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
     humidity: numeric(asRecord(raw.airQualitySensor).humidity),
     ...readOptions(raw, layout),
     ...readTimers(raw, layout),
-    ...readAirQuality(asRecord(raw.airQualitySensor))
+    ...readAirQuality(asRecord(raw.airQualitySensor)),
+    ...readFilter(asRecord(raw.filterInfo))
   }
 }
 
@@ -213,6 +217,40 @@ function readTimers(raw: Record<string, unknown>, layout: AcLayout): Pick<Device
       : 0
   }
   return Object.keys(result).length > 0 ? { timer: result } : {}
+}
+
+/** Filtro: horas de uso e, quando informado, a vida util ou o que resta. Zero na vida util = desconhecida. */
+function readFilter(info: Record<string, unknown>): Pick<DeviceState, 'filter'> {
+  const positive = (value: unknown, allowZero = false): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && (allowZero ? value >= 0 : value > 0) ? value : undefined
+  const filter = {
+    usedHours: positive(info.usedTime, true),
+    lifetimeHours: positive(info.filterLifetime),
+    remainingPercent: typeof info.filterRemainPercent === 'number' && info.filterRemainPercent >= 0 && info.filterRemainPercent <= 100 ? info.filterRemainPercent : undefined
+  }
+  const present = Object.fromEntries(Object.entries(filter).filter(([, value]) => value !== undefined))
+  return Object.keys(present).length > 0 ? { filter: present } : {}
+}
+
+/** Texto dos avisos (`pushCode`); so os confirmados no perfil real. O resto vai com o codigo. */
+const PUSH_MESSAGES: Record<string, string> = {
+  WATER_IS_FULL: 'O reservatório de água está cheio.'
+}
+
+export function pushMessage(code: string | undefined): string {
+  if (code && PUSH_MESSAGES[code]) return PUSH_MESSAGES[code]
+  return code ? `O aparelho enviou um aviso (${code}).` : 'O aparelho enviou um aviso.'
+}
+
+/** Aviso mais velho que isso e reentrega da sessao persistente, nao novidade. */
+const NOTICE_MAX_AGE_MS = 10 * 60 * 1000
+/** O mesmo aviso do mesmo aparelho nao se repete nesse intervalo. */
+const NOTICE_COOLDOWN_MS = 30 * 60 * 1000
+
+/** Apelido para notificacao: curto e sem caracteres de controle. */
+function noticeTitle(name: string): string {
+  const clean = name.replace(/[\p{C}]/gu, ' ').replace(/\s+/g, ' ').trim()
+  return (clean.length > 80 ? `${clean.slice(0, 79)}…` : clean) || 'Aparelho LG'
 }
 
 /** Sensor de particulas: so os valores que o modelo publica. */
@@ -518,6 +556,7 @@ export class ThinqDriver implements Driver {
     let registered = false
     let route: { url: string; at: number } | null = null
     let subscribed = false
+    const lastNotice = new Map<string, number>()
 
     /**
      * Assina eventos dos ares da conta (inclusive os offline agora) e a lista de
@@ -540,7 +579,12 @@ export class ThinqDriver implements Driver {
       }
       for (const item of items) {
         if (stopped) return
-        if (item.deviceInfo?.deviceType === AC_TYPE) await attempt(() => client.subscribeEvents(item.deviceId))
+        if (item.deviceInfo?.deviceType !== AC_TYPE) continue
+        await attempt(() => client.subscribeEvents(item.deviceId))
+        // Avisos sao um extra: so para quem declara, e falha nao deixa nada pendente.
+        if (this.layouts.get(item.deviceId)?.push) {
+          await client.subscribePush(item.deviceId).catch((cause) => { if (FATAL_CODES.has(errorCode(cause))) throw cause })
+        }
       }
       await attempt(() => client.subscribeDeviceList())
       subscribed = !pending
@@ -596,7 +640,7 @@ export class ThinqDriver implements Driver {
           topics: credentials.subscriptions
         }
       },
-      message: (_topic, payload) => {
+      message: (_topic, payload, redelivered) => {
         let raw: unknown
         try { raw = JSON.parse(payload.toString('utf8')) } catch { return }
         const message = parseThinqMessage(raw)
@@ -609,7 +653,18 @@ export class ThinqDriver implements Driver {
           })
           return
         }
-        if (message.kind === 'push') return
+        if (message.kind === 'push') {
+          // Sessao persistente (clean: false) reentrega avisos antigos ao reconectar.
+          if (redelivered || (message.at !== undefined && Date.now() - message.at > NOTICE_MAX_AGE_MS)) return
+          const key = `${message.deviceId}:${message.code ?? ''}`
+          const last = lastNotice.get(key)
+          if (last !== undefined && Date.now() - last < NOTICE_COOLDOWN_MS) return
+          lastNotice.set(key, Date.now())
+          const item = this.known.get(message.deviceId)?.item
+          const title = noticeTitle(item ? this.base(item).name : 'Aparelho LG')
+          listener.event({ type: 'notice', deviceId: message.deviceId, title, message: pushMessage(message.code) })
+          return
+        }
         const entry = this.known.get(message.deviceId)
         const layout = this.layouts.get(message.deviceId)
         if (!entry || !layout) {

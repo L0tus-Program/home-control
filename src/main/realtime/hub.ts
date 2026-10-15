@@ -189,6 +189,8 @@ export class RealtimeHub {
       } else {
         pending.set(`availability:${event.deviceId}`, event)
       }
+    } else if (event.type === 'notice') {
+      pending.set(`notice:${event.deviceId}:${event.message}`, event)
     } else {
       pending.set('refresh', event)
     }

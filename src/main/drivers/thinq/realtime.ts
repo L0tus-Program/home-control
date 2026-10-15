@@ -5,8 +5,8 @@
  */
 export type ThinqMessage =
   | { kind: 'status'; deviceId: string; report: Record<string, unknown> }
-  /** Aviso do aparelho (filtro, erro); por ora so registrado. */
-  | { kind: 'push'; deviceId: string; code?: string }
+  /** Aviso do aparelho (reservatorio cheio...); `at`: quando a LG gerou, se informou. */
+  | { kind: 'push'; deviceId: string; code?: string; at?: number }
   /** Aparelho entrou, saiu ou mudou de nome na conta. */
   | { kind: 'changed'; deviceId: string }
 
@@ -23,8 +23,12 @@ export function parseThinqMessage(raw: unknown): ThinqMessage | null {
     case 'DEVICE_STATUS':
       if (!record(raw.report) || Object.keys(raw.report).length === 0 || Object.keys(raw.report).length > MAX_RESOURCES) return null
       return { kind: 'status', deviceId, report: raw.report }
-    case 'DEVICE_PUSH':
-      return { kind: 'push', deviceId, ...(typeof raw.pushCode === 'string' ? { code: raw.pushCode } : {}) }
+    case 'DEVICE_PUSH': {
+      // Codigo fora do padrao vira aviso generico: nada cru e longo vai para a tela.
+      const code = typeof raw.pushCode === 'string' && /^[A-Z0-9_]{1,64}$/.test(raw.pushCode) ? raw.pushCode : undefined
+      const at = typeof raw.timestamp === 'number' ? raw.timestamp : typeof raw.timestamp === 'string' ? Date.parse(raw.timestamp) : NaN
+      return { kind: 'push', deviceId, ...(code ? { code } : {}), ...(Number.isFinite(at) ? { at } : {}) }
+    }
     case 'DEVICE_REGISTERED':
     case 'DEVICE_UNREGISTERED':
     case 'DEVICE_ALIAS_CHANGED':

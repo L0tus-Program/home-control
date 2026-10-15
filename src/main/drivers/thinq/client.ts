@@ -168,6 +168,11 @@ export class ThinqClient {
     return this.request('DELETE', `event/${encodeURIComponent(deviceId)}/unsubscribe`)
   }
 
+  /** Avisos do aparelho (DEVICE_PUSH): reservatorio cheio, filtro... */
+  subscribePush(deviceId: string): Promise<unknown> {
+    return this.request('POST', `push/${encodeURIComponent(deviceId)}/subscribe`)
+  }
+
   /** Aparelhos que entram, saem ou mudam de nome na conta. */
   subscribeDeviceList(): Promise<unknown> {
     return this.request('POST', 'push/devices')

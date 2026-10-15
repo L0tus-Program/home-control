@@ -18,7 +18,7 @@ export function fakeBroker({ autoConnect = true, refuse = false } = {}) {
     }
     client.end = () => { client.ended = true; return client }
     client.endAsync = async () => { client.ended = true }
-    client.deliver = (topic, payload) => client.emit('message', topic, Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload)))
+    client.deliver = (topic, payload, packet = {}) => client.emit('message', topic, Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload)), packet)
     broker.clients.push(client)
     broker.connects.push({ url, options })
     if (autoConnect) setImmediate(() => client.emit('connect'))

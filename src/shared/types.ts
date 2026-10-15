@@ -51,6 +51,8 @@ export interface DeviceState {
   options?: Partial<Record<OptionKey, boolean>>
   /** Minutos que faltam para cada timer programado; 0 = programado, prazo desconhecido. */
   timer?: Partial<Record<TimerAction, number>>
+  /** Filtro do ar: horas de uso e, quando o modelo informa, o que resta. */
+  filter?: { usedHours?: number; lifetimeHours?: number; remainingPercent?: number }
   /** Particulas no ar (ug/m3), quando o aparelho tem sensor. */
   airQuality?: { pm1?: number; pm25?: number; pm10?: number }
   humidity?: number
@@ -107,6 +109,8 @@ export type DeviceEvent =
   | { type: 'availability'; deviceId: string; online: boolean }
   /** Algo mudou que pede reler a lista: aparelho novo, removido, renomeado ou eventos perdidos. */
   | { type: 'refresh' }
+  /** Aviso do proprio aparelho (reservatorio cheio, filtro), ja em texto para a pessoa. */
+  | { type: 'notice'; deviceId: string; title: string; message: string }
 
 /** Eventos de um driver, agrupados pelo processo principal antes de cruzar o IPC. */
 export interface DeviceEventBatch {

@@ -14,7 +14,8 @@ export interface LinkTarget {
 export interface LinkOptions {
   /** `lastError`: por que a tentativa anterior falhou, se falhou. */
   prepare(lastError?: unknown): Promise<LinkTarget>
-  message(topic: string, payload: Buffer): void
+  /** `redelivered`: o broker ja tinha entregue (flag DUP do MQTT). */
+  message(topic: string, payload: Buffer, redelivered: boolean): void
   status(state: RealtimeState, error?: string): void
   /** Toda conexao depois da primeira pode ter perdido eventos. */
   reconnected(): void
@@ -180,9 +181,9 @@ export class MqttLink {
     })
     this.client = client
 
-    const onMessage = (topic: string, payload: Buffer): void => {
+    const onMessage = (topic: string, payload: Buffer, packet?: { dup?: boolean }): void => {
       if (!current() || payload.length > MAX_PAYLOAD_BYTES) return
-      try { this.options.message(topic, payload) } catch { /* mensagem ruim nao derruba o canal */ }
+      try { this.options.message(topic, payload, packet?.dup === true) } catch { /* mensagem ruim nao derruba o canal */ }
     }
     const onError = (error: Error): void => { if (current()) this.fail(error) }
     const onClose = (): void => { if (current()) this.fail(new RealtimeError('Conexão de tempo real encerrada.')) }

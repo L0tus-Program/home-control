@@ -38,7 +38,7 @@ export function App(): React.JSX.Element {
   const driverId = isTuya ? 'tuya' : 'thinq'
   const anyConnected = !!(settings?.tuya.hasCredentials || settings?.thinq.hasToken)
   const connected = !!(isTuya ? settings?.tuya.hasCredentials : settings?.thinq.hasToken)
-  const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send } = useDevices(anyConnected, revision)
+  const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send, notices, dismissNotice } = useDevices(anyConnected, revision)
   const [editingRoom, setEditingRoom] = useState(false)
   const [showNewRoom, setShowNewRoom] = useState(false)
   const [roomChoice, setRoomChoice] = useState<string | null>(null)
@@ -126,6 +126,16 @@ export function App(): React.JSX.Element {
   return (
     <>
       <div className="aurora" aria-hidden="true"><span /><span /><span /></div>
+      {notices.length > 0 && (
+        <div className="notices" role="status" aria-live="polite">
+          {notices.map((notice) => (
+            <div key={notice.id} className="notice">
+              <span><strong>{notice.title}</strong> · {notice.message}</span>
+              <button type="button" aria-label="Dispensar aviso" onClick={() => dismissNotice(notice.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="shell">
         <TitleBar />
         <div className="body">
