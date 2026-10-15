@@ -95,3 +95,30 @@ test('resync pede releitura so dos drivers ao vivo', async () => {
   assert.deepEqual(out.batches, [{ driverId: 'tuya', events: [{ type: 'refresh' }] }])
   assert.deepEqual(out.statuses.at(-1), { tuya: { state: 'live' }, thinq: { state: 'connecting' } })
 })
+
+test('canal que fica ao vivo pede uma releitura; watch que lanca sincrono nao derruba os outros', async () => {
+  const out = recorder()
+  const hub = new RealtimeHub(out.output, 5)
+  const broken = fakeDriver('lg')
+  broken.watch = () => { throw new Error('quebrado') }
+  const tuya = fakeDriver('tuya')
+  await hub.restart(() => [broken, tuya])
+  await wait(0)
+  tuya.listener.status('live')
+  tuya.listener.status('live')
+  await wait(20)
+  assert.deepEqual(out.batches, [{ driverId: 'tuya', events: [{ type: 'refresh' }] }])
+  assert.deepEqual(hub.getStatuses(), { lg: { state: 'unavailable', error: 'quebrado' }, tuya: { state: 'live' } })
+  assert.equal(hub.isActive(), true)
+  await hub.stop()
+  assert.equal(hub.isActive(), false)
+})
+
+test('fabrica que lanca nao trava a fila de restart', async () => {
+  const hub = new RealtimeHub(recorder().output, 5)
+  await hub.restart(() => { throw new Error('cofre indisponivel') })
+  const tuya = fakeDriver('tuya')
+  await hub.restart([tuya])
+  assert.ok(tuya.listener)
+  await hub.stop()
+})

@@ -8,6 +8,12 @@ export interface HubOutput {
 
 /** Rajadas do MQTT (varios campos mudando juntos) viram uma mensagem so para a UI. */
 const COALESCE_MS = 100
+/** Um canal preso nunca pode travar a troca de configuracao. */
+const STEP_TIMEOUT_MS = 5000
+
+function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([promise.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))])
+}
 
 function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
@@ -31,10 +37,19 @@ export class RealtimeHub {
 
   constructor(private readonly output: HubOutput, private readonly coalesceMs = COALESCE_MS) {}
 
-  /** Serializado: dois `restart` seguidos nunca deixam dois canais ligados. */
-  restart(drivers: Driver[]): Promise<void> {
-    this.chain = this.chain.then(() => this.swap(drivers)).catch(() => undefined)
+  /**
+   * Serializado: dois `restart` seguidos nunca deixam dois canais ligados. Uma
+   * fabrica e avaliada so na vez dela, e uma falha ao montar os drivers vira
+   * "sem tempo real" em vez de erro para quem salvou a configuracao.
+   */
+  restart(drivers: Driver[] | (() => Driver[])): Promise<void> {
+    this.chain = this.chain.then(() => this.swap(typeof drivers === 'function' ? drivers() : drivers)).catch(() => undefined)
     return this.chain
+  }
+
+  /** Ha algum canal ligado ou ligando? */
+  isActive(): boolean {
+    return this.handles.length > 0
   }
 
   stop(): Promise<void> {
@@ -60,13 +75,16 @@ export class RealtimeHub {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     await Promise.all(previous.map(async (pending) => {
-      const handle = await pending
-      await handle?.stop().catch(() => undefined)
+      const handle = await within(pending, STEP_TIMEOUT_MS, null)
+      if (!handle) return
+      await within(Promise.resolve().then(() => handle.stop()), STEP_TIMEOUT_MS, undefined)
     }))
 
     this.statuses = {}
     for (const driver of drivers) {
-      if (!driver.watch || !driver.isConfigured()) {
+      let configured = false
+      try { configured = Boolean(driver.watch) && driver.isConfigured() } catch { configured = false }
+      if (!configured) {
         this.statuses[driver.id] = { state: 'off' }
         continue
       }
@@ -76,11 +94,14 @@ export class RealtimeHub {
         event: (event) => { if (current()) this.enqueue(driver.id, event) },
         status: (state, error) => {
           if (!current()) return
+          const was = this.statuses[driver.id]?.state
           this.statuses[driver.id] = error ? { state, error } : { state }
-          this.output.status(this.getStatuses())
+          try { this.output.status(this.getStatuses()) } catch { /* idem */ }
+          // Entre a ultima leitura e o canal ficar ao vivo, eventos podem ter passado.
+          if (state === 'live' && was !== 'live') this.enqueue(driver.id, { type: 'refresh' })
         }
       }
-      this.handles.push(driver.watch(listener).catch((cause) => {
+      this.handles.push(Promise.resolve().then(() => driver.watch!(listener)).catch((cause) => {
         listener.status('unavailable', message(cause))
         return null
       }))
@@ -117,7 +138,8 @@ export class RealtimeHub {
     const queue = this.queue
     this.queue = new Map()
     for (const [driverId, events] of queue) {
-      if (events.size > 0) this.output.events({ driverId, events: [...events.values()] })
+      if (events.size === 0) continue
+      try { this.output.events({ driverId, events: [...events.values()] }) } catch { /* janela fechando: o proximo lote chega */ }
     }
   }
 }

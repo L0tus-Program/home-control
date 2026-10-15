@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
-import { startRealtime, stopRealtime } from './realtime/service'
+import { realtimeActive, startRealtime, stopRealtime } from './realtime/service'
 
 const isDev = !app.isPackaged
 const PROFILE_NAME = 'home-control'
@@ -108,7 +108,7 @@ if (captureMode) {
   // Fecha os canais MQTT antes de sair, sem segurar o encerramento.
   let quitting = false
   app.on('before-quit', (event) => {
-    if (quitting) return
+    if (quitting || !realtimeActive()) return
     quitting = true
     event.preventDefault()
     void stopRealtime().finally(() => app.quit())

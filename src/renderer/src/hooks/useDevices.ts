@@ -58,8 +58,10 @@ export function mergeRead(current: HomeRead, fresh: HomeRead, queried: string[],
   return { devices, statuses }
 }
 
-/** Releitura pedida por evento (aparelho novo, removido, reconexao): no maximo uma por intervalo. */
+/** Releitura pedida por evento (aparelho novo, removido, reconexao): espera a rajada passar... */
 const EVENT_REFRESH_DELAY_MS = 1500
+/** ...e no maximo uma por driver neste intervalo, para nao gastar a cota da LG. */
+const EVENT_REFRESH_MIN_INTERVAL_MS = 30_000
 
 export interface DevicesApi {
   devices: Device[]
@@ -95,17 +97,19 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
   const updatedAt = useRef(new Map<string, number>())
   // Quando cada aparelho foi atualizado por evento; protege contra leituras mais velhas.
   const eventAt = useRef(new Map<string, number>())
-  const pendingRef = useRef<ReadonlySet<string>>(new Set())
-  pendingRef.current = pending
+  // Comandos em voo por aparelho, atualizado na hora (o estado `pending` so no proximo render).
+  const pendingCounts = useRef(new Map<string, number>())
+  const pendingKeys = useRef<ReadonlySet<string>>(new Set())
   const homeRef = useRef(home)
   homeRef.current = home
 
-  const refresh = useCallback(async (driverId?: string) => {
+  /** `background`: pedida por evento; nao pisca o indicador de carregamento. */
+  const refresh = useCallback(async (driverId?: string, background = false) => {
     if (!enabled) return
     const id = ++requestId.current
     const startedAt = Date.now()
     inFlight.current = true
-    setLoading(true)
+    if (!background) setLoading(true)
     const result = await window.home.listDevices(driverId).catch((cause: unknown) => ({
       ok: false as const, error: cause instanceof Error ? cause.message : 'Não consegui carregar os aparelhos.'
     }))
@@ -135,20 +139,37 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
   useEffect(() => {
     if (!enabled) return
     const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const lastAuto = new Map<string, number>()
+    // Aparelhos que continuaram fora da lista depois de uma releitura nao pedem outra.
+    const unknownSeen = new Set<string>()
     const refreshSoon = (driverId: string): void => {
       if (timers.has(driverId)) return
-      timers.set(driverId, setTimeout(() => { timers.delete(driverId); void refresh(driverId) }, EVENT_REFRESH_DELAY_MS))
+      const since = Date.now() - (lastAuto.get(driverId) ?? -Infinity)
+      const delay = Math.max(EVENT_REFRESH_DELAY_MS, EVENT_REFRESH_MIN_INTERVAL_MS - since)
+      const run = (): void => {
+        // Nunca cancela uma leitura em andamento (a carga inicial, por exemplo): espera ela.
+        if (inFlight.current) {
+          timers.set(driverId, setTimeout(run, EVENT_REFRESH_DELAY_MS))
+          return
+        }
+        timers.delete(driverId)
+        lastAuto.set(driverId, Date.now())
+        void refresh(driverId, true)
+      }
+      timers.set(driverId, setTimeout(run, delay))
     }
     const stopEvents = window.home.onDeviceEvents((batch) => {
       // A analise usa a lista ja desenhada; o atualizador reaplica sobre a mais recente.
-      const seen = applyDeviceEvents(homeRef.current.devices, batch, pendingRef.current)
+      const seen = applyDeviceEvents(homeRef.current.devices, batch, pendingKeys.current)
       const now = Date.now()
       for (const key of seen.touched) eventAt.current.set(key, now)
       setHome((current) => {
-        const applied = applyDeviceEvents(current.devices, batch, pendingRef.current)
+        const applied = applyDeviceEvents(current.devices, batch, pendingKeys.current)
         return applied.devices === current.devices ? current : { ...current, devices: applied.devices }
       })
-      if (seen.needsRefresh) refreshSoon(batch.driverId)
+      const fresh = seen.unknown.filter((key) => !unknownSeen.has(key))
+      for (const key of fresh) unknownSeen.add(key)
+      if (seen.needsRefresh || fresh.length > 0) refreshSoon(batch.driverId)
     })
     const stopStatus = window.home.onRealtimeStatus(setRealtime)
     void window.home.getRealtimeStatus().then((result) => { if (result.ok) setRealtime(result.data) }).catch(() => undefined)
@@ -164,6 +185,8 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
     contextId.current += 1
     updatedAt.current.clear()
     eventAt.current.clear()
+    pendingCounts.current.clear()
+    pendingKeys.current = new Set()
     setHome(EMPTY)
     setPending(new Set())
     setError(null)
@@ -181,7 +204,10 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
       devices: current.devices.map((item) => (deviceKey(item) === key ? next : item))
     }))
     replace(optimistic)
-    setPending((current) => new Set(current).add(key))
+    const counts = pendingCounts.current
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+    pendingKeys.current = new Set(counts.keys())
+    setPending(pendingKeys.current)
     setError(null)
 
     const result = await window.home.sendCommand({
@@ -193,12 +219,13 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
     }))
     if (context !== contextId.current) return
 
-    replace(result.ok ? result.data : device)
-    setPending((current) => {
-      const next = new Set(current)
-      next.delete(key)
-      return next
-    })
+    // Dois comandos seguidos no mesmo aparelho: so libera quando o ultimo termina.
+    const left = (counts.get(key) ?? 1) - 1
+    if (left > 0) counts.set(key, left)
+    else counts.delete(key)
+    pendingKeys.current = new Set(counts.keys())
+    setPending(pendingKeys.current)
+    if (left === 0) replace(result.ok ? result.data : device)
     if (!result.ok) setError(result.error)
   }, [])
 

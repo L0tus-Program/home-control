@@ -6,8 +6,14 @@ export interface AppliedEvents {
   devices: Device[]
   /** Aparelhos atualizados por evento, para a protecao contra leituras antigas. */
   touched: string[]
-  /** Algum evento pede reler a lista deste driver. */
+  /** O driver pediu para reler a lista dele. */
   needsRefresh: boolean
+  /** Chaves de aparelhos que nao estao na lista; quem chama decide se rele. */
+  unknown: string[]
+}
+
+function sameDevice(a: Device, b: Device): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 /**
@@ -20,6 +26,7 @@ export interface AppliedEvents {
 export function applyDeviceEvents(devices: Device[], batch: DeviceEventBatch, pending: ReadonlySet<string>): AppliedEvents {
   let next = devices
   const touched: string[] = []
+  const unknown: string[] = []
   let needsRefresh = false
 
   const replace = (key: string, update: (device: Device) => Device): boolean => {
@@ -38,8 +45,14 @@ export function applyDeviceEvents(devices: Device[], batch: DeviceEventBatch, pe
       if (event.device.driverId !== batch.driverId) continue
       const key = deviceKey(event.device)
       if (pending.has(key)) continue
-      if (replace(key, () => event.device)) touched.push(key)
-      else needsRefresh = true
+      const current = next.find((device) => deviceKey(device) === key)
+      if (!current) {
+        unknown.push(key)
+        continue
+      }
+      touched.push(key)
+      // Eco ou relato repetido: nada a redesenhar.
+      if (!sameDevice(current, event.device)) replace(key, () => event.device)
     } else {
       const key = deviceKey({ driverId: batch.driverId, id: event.deviceId })
       const current = next.find((device) => deviceKey(device) === key)
@@ -48,5 +61,5 @@ export function applyDeviceEvents(devices: Device[], batch: DeviceEventBatch, pe
       touched.push(key)
     }
   }
-  return { devices: next, touched, needsRefresh }
+  return { devices: next, touched, needsRefresh, unknown }
 }

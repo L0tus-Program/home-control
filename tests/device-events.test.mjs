@@ -29,9 +29,12 @@ test('comando em voo ignora estado do evento, mas aviso de disponibilidade passa
   assert.equal(result.devices[0].state.online, false)
 })
 
-test('aparelho desconhecido ou pedido explicito levam a releitura; driver alheio e ignorado', () => {
+test('aparelho desconhecido e listado a parte; pedido explicito pede releitura; driver alheio e ignorado', () => {
   const list = [device('tuya', 'a')]
-  assert.equal(applyDeviceEvents(list, { driverId: 'tuya', events: [{ type: 'state', device: device('tuya', 'novo') }] }, none).needsRefresh, true)
+  const unknown = applyDeviceEvents(list, { driverId: 'tuya', events: [{ type: 'state', device: device('tuya', 'novo') }] }, none)
+  assert.deepEqual(unknown.unknown, ['tuya:novo'])
+  assert.equal(unknown.needsRefresh, false)
+  assert.equal(unknown.devices, list)
   assert.equal(applyDeviceEvents(list, { driverId: 'tuya', events: [{ type: 'refresh' }] }, none).needsRefresh, true)
   const foreign = applyDeviceEvents(list, { driverId: 'tuya', events: [{ type: 'state', device: device('thinq', 'a', { power: true }) }] }, none)
   assert.equal(foreign.devices, list)
@@ -52,4 +55,11 @@ test('leitura que comecou antes de um evento nao sobrescreve o aparelho atualiza
   const merged = mergeRead(current, fresh, ['tuya'], (key) => key === 'tuya:a')
   assert.equal(merged.devices[0].state.power, true)
   assert.equal(merged.devices[1].state.power, true)
+})
+
+test('relato identico nao troca o objeto, mas conta como atualizado', () => {
+  const list = [device('tuya', 'a', { power: true })]
+  const result = applyDeviceEvents(list, { driverId: 'tuya', events: [{ type: 'state', device: device('tuya', 'a', { power: true }) }] }, none)
+  assert.equal(result.devices, list)
+  assert.deepEqual(result.touched, ['tuya:a'])
 })
