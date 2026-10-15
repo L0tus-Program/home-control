@@ -132,7 +132,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
           brightness={brightness}
           hasColor={hasColor}
           hasColorTemperature={hasColorTemperature}
-          value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature }}
+          value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature, mode: state.mode }}
           disabled={offline || !state.power || busy}
           onCommand={onCommand}
         />

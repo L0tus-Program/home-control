@@ -94,8 +94,13 @@ test('tom do branco: le e envia temp_value na faixa declarada, passando ao modo 
   assert.deepEqual(colorTemperatureCommands(white, 80, functions), [{ code: 'temp_value_v2', value: 800 }])
   assert.deepEqual(colorTemperatureCommands(white, 33.3, functions), [{ code: 'temp_value_v2', value: 330 }], 'respeita o passo')
 
-  const colour = [{ code: 'switch_led', value: true }, { code: 'work_mode', value: 'colour' }, { code: 'temp_value_v2', value: 0 }]
-  assert.deepEqual(colorTemperatureCommands(colour, 0, functions), [{ code: 'work_mode', value: 'white' }, { code: 'temp_value_v2', value: 0 }])
+  // Em cor com V alto e bright_value baixo: a troca para branco leva o brilho atual junto.
+  const withBright = [...functions, { code: 'bright_value_v2', type: 'Integer', values: '{"min":10,"max":1000,"step":1}' }, { code: 'colour_data_v2', type: 'Json', values: '{}' }]
+  const colour = [{ code: 'switch_led', value: true }, { code: 'work_mode', value: 'colour' }, { code: 'temp_value_v2', value: 0 },
+    { code: 'bright_value_v2', value: 100 }, { code: 'colour_data_v2', value: '{"h":0,"s":1000,"v":1000}' }]
+  assert.deepEqual(colorTemperatureCommands(colour, 0, withBright), [{ code: 'work_mode', value: 'white' }, { code: 'bright_value_v2', value: 1000 }, { code: 'temp_value_v2', value: 0 }])
+  const scene = [{ code: 'switch_led', value: true }, { code: 'work_mode', value: 'scene' }, { code: 'temp_value_v2', value: 0 }]
+  assert.deepEqual(colorTemperatureCommands(scene, 50, functions), [{ code: 'work_mode', value: 'white' }, { code: 'temp_value_v2', value: 500 }])
 
   // v1 sem faixa declarada: 0-255.
   const v1 = [{ code: 'switch_led', value: true }, { code: 'temp_value', value: 255 }]
@@ -123,6 +128,8 @@ test('confirmacao do tom do branco aceita arredondamento', async () => {
     `
   })
   const matches = confirmsCommand({ type: 'colorTemperature', value: 40 })
-  assert.equal(matches({ state: { colorTemperature: 41 } }), true)
-  assert.equal(matches({ state: { colorTemperature: 60 } }), false)
+  assert.equal(matches({ state: { colorTemperature: 41, mode: 'white' } }), true)
+  assert.equal(matches({ state: { colorTemperature: 41 } }), true, 'lampada sem modos')
+  assert.equal(matches({ state: { colorTemperature: 60, mode: 'white' } }), false)
+  assert.equal(matches({ state: { colorTemperature: 40, mode: 'colour' } }), false, 'tom guardado em modo cor nao confirma')
 })

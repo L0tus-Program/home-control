@@ -6,7 +6,7 @@ interface Props {
   brightness?: Extract<Capability, { kind: 'brightness' }>
   hasColor: boolean
   hasColorTemperature?: boolean
-  value: { brightness?: number; color?: ColorState; colorTemperature?: number }
+  value: { brightness?: number; color?: ColorState; colorTemperature?: number; mode?: string }
   disabled: boolean
   onCommand: (command: Command) => void
 }
@@ -75,6 +75,8 @@ export function LightControls({
           trackBackground={WHITE_TONE_TRACK}
           knobColor={whiteTone(tone ?? 50)}
           format={(next) => whiteToneLabel(next)}
+          // Em modo cor, tocar no tom ja selecionado tambem volta ao branco.
+          commitUnchanged={value.mode !== undefined && value.mode !== 'white'}
           onChange={(next) => onCommand({ type: 'colorTemperature', value: next })}
         />
       )}

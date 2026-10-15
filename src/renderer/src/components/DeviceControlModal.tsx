@@ -111,7 +111,7 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
         {(brightness || hasColor || hasColorTemperature) && (
           <LightControls brightness={brightness} hasColor={hasColor}
           hasColorTemperature={hasColorTemperature}
-            value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature }} disabled={disabled || !state.power}
+            value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature, mode: state.mode }} disabled={disabled || !state.power}
             onCommand={onCommand} />
         )}
 

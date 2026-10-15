@@ -91,7 +91,13 @@ export function colorTemperatureCommands(status: TuyaStatusItem[], percent: numb
   const code = pick(status, functions, 'temp_value_v2', 'temp_value')
   if (!code) throw new DriverError('Esta lâmpada não permite ajustar o tom do branco.')
   const commands: TuyaCommand[] = []
-  if (pick(status, functions, 'work_mode') && statusMap(status).get('work_mode') !== 'white') commands.push({ code: 'work_mode', value: 'white' })
+  if (pick(status, functions, 'work_mode') && statusMap(status).get('work_mode') !== 'white') {
+    commands.push({ code: 'work_mode', value: 'white' })
+    // Em cor o brilho e o V da cor; no branco e o bright_value. Leva o atual junto para nao pular.
+    const brightCode = pick(status, functions, 'bright_value_v2', 'bright_value')
+    const brightness = readState(status, true, functions).brightness
+    if (brightCode && brightness !== undefined) commands.push({ code: brightCode, value: percentToRaw(brightness, brightnessRange(brightCode, functions)) })
+  }
   commands.push({ code, value: percentToTemp(percent, tempRange(code, functions)) })
   return commands
 }

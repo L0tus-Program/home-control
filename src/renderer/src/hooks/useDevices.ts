@@ -26,10 +26,12 @@ function applyOptimistic(device: Device, command: Command): Device {
       state.color = command.value
       break
     case 'colorTemperature':
-      // O tom do branco tira a lampada do modo cor.
+      // O tom do branco tira a lampada do modo cor (quando ela tem modos).
       state.colorTemperature = command.value
-      state.color = undefined
-      if (state.mode) state.mode = 'white'
+      if (state.mode) {
+        state.mode = 'white'
+        state.color = undefined
+      }
       break
   }
   return { ...device, state }
