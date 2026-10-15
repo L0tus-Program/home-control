@@ -11,6 +11,9 @@ function weekday(date: string): string {
   return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
 }
 
+/** Na abertura do app a LG pode recusar por limite de chamadas: tenta sozinho antes de mostrar o erro. */
+const AUTO_RETRY_DELAYS_MS = [3000, 8000]
+
 /** Consumo do aparelho, lido so quando o modal abre (cada leitura gasta cota da API). */
 export function EnergyPanel({ device }: { device: Device }): React.JSX.Element | null {
   const supported = device.capabilities.some((cap) => cap.kind === 'energy')
@@ -21,14 +24,27 @@ export function EnergyPanel({ device }: { device: Device }): React.JSX.Element |
   useEffect(() => {
     if (!supported) return
     let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     setReport(null)
     setError(null)
-    void window.home.getEnergy(device.driverId, device.id).then((result) => {
-      if (!alive) return
-      if (result.ok) setReport(result.data)
-      else setError(result.error)
-    }, () => { if (alive) setError('Não consegui ler o consumo agora.') })
-    return () => { alive = false }
+    const load = (retry: number): void => {
+      void window.home.getEnergy(device.driverId, device.id).then((result) => {
+        if (!alive) return
+        if (result.ok) { setReport(result.data); return }
+        // "Nao informa" e definitivo; o resto pode passar sozinho em segundos.
+        const definitive = /nao informa|não informa/i.test(result.error)
+        if (!definitive && retry < AUTO_RETRY_DELAYS_MS.length) {
+          timer = setTimeout(() => load(retry + 1), AUTO_RETRY_DELAYS_MS[retry])
+          return
+        }
+        setError(result.error)
+      }, () => { if (alive) setError('Não consegui ler o consumo agora.') })
+    }
+    load(0)
+    return () => {
+      alive = false
+      if (timer) clearTimeout(timer)
+    }
   }, [supported, device.driverId, device.id, attempt])
 
   if (!supported) return null

@@ -598,11 +598,10 @@ export class ThinqDriver implements Driver {
           const entries = energyEntries(response)
           return entries.length > 0 ? entries.reduce((sum, entry) => sum + entry.wh, 0) : undefined
         }, () => undefined)
-    const [daily, thisMonthWh, lastMonthWh] = await Promise.all([
-      client.getEnergyUsage(deviceId, ENERGY_PROPERTY, 'DAILY', ymd(weekAgo), ymd(today)).then(energyEntries),
-      month(today),
-      month(lastMonth)
-    ])
+    // Em sequencia: na abertura do app a LG ja recebe muitas chamadas e rajadas batem no limite.
+    const daily = energyEntries(await client.getEnergyUsage(deviceId, ENERGY_PROPERTY, 'DAILY', ymd(weekAgo), ymd(today)))
+    const thisMonthWh = await month(today)
+    const lastMonthWh = await month(lastMonth)
     const days = new Map<string, number>()
     for (const entry of daily) if (entry.date) days.set(entry.date, entry.wh)
     return {
