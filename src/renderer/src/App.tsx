@@ -3,6 +3,7 @@ import { deviceKey } from '../../shared/devices'
 import { createRoom, findRoom } from '../../shared/home'
 import type { AppSettings, DriverStatus } from '../../shared/types'
 import { DeviceCard } from './components/DeviceCard'
+import { ScenesPanel } from './components/ScenesPanel'
 import { RefreshIcon, SettingsIcon } from './components/Icons'
 import { SettingsModal, type Integration } from './components/SettingsModal'
 import { Sidebar, type AppSection } from './components/Sidebar'
@@ -220,6 +221,7 @@ export function App(): React.JSX.Element {
                     ))}
                   </div>
                 )}
+                {isTuya && connected && <ScenesPanel driverId="tuya" revision={revision} />}
               </>
             )}
           </main>

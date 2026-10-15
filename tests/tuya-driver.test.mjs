@@ -63,3 +63,16 @@ test('executa brilho com faixa de funções e modo branco/cor', async () => {
   assert.deepEqual(sent[1], { id: 'luz', commands: [{ code: 'work_mode', value: 'colour' }] })
   await assert.rejects(driver.execute('luz', { type: 'temperature', value: 20 }))
 })
+
+test('cenas pelo driver: id junta casa e cena; id malformado e recusado; sem suporte, lista vazia', async () => {
+  const triggered = []
+  const driver = new TuyaDriver(cloudFixture({
+    listScenes: async () => [{ homeId: '12', sceneId: 'abc', name: 'Cinema', enabled: true }],
+    triggerScene: async (home, scene) => { triggered.push([home, scene]) }
+  }))
+  assert.deepEqual(await driver.listScenes(), [{ id: '12:abc', driverId: 'tuya', name: 'Cinema', enabled: true }])
+  await driver.runScene('12:abc')
+  assert.deepEqual(triggered, [['12', 'abc']])
+  await assert.rejects(driver.runScene('12:abc/../x'), /inválida/)
+  assert.deepEqual(await new TuyaDriver(cloudFixture()).listScenes(), [])
+})

@@ -110,6 +110,13 @@ function localStrategy(value: unknown): TuyaLocalInfo | undefined {
   return { dps }
 }
 
+export interface TuyaScene {
+  homeId: string
+  sceneId: string
+  name: string
+  enabled: boolean
+}
+
 export interface TuyaMqttConfig {
   url: string
   clientId: string
@@ -233,6 +240,27 @@ export class TuyaSharing {
       }
     }
     return [...devices.values()]
+  }
+
+  /** Cenas "Toque para executar" de cada casa (tuya-device-sharing-sdk 0.2.15, `scenes.py`). */
+  async listScenes(): Promise<TuyaScene[]> {
+    const scenes: TuyaScene[] = []
+    for (const homeId of await this.listHomeIds()) {
+      const result = await this.request('GET', '/v1.0/m/scene/ha/home/scenes', { homeId })
+      if (!Array.isArray(result)) throw new DriverError('Lista de cenas inválida retornada pela Tuya.')
+      for (const item of result) {
+        if (!record(item)) continue
+        const id = [item.scene_id, item.sceneId, item.id].find((value) => text(value) || (typeof value === 'number' && Number.isSafeInteger(value)))
+        if (id === undefined || typeof item.name !== 'string') continue
+        scenes.push({ homeId, sceneId: String(id), name: item.name.trim() || 'Cena sem nome', enabled: item.enabled !== false })
+      }
+    }
+    return scenes
+  }
+
+  async triggerScene(homeId: string, sceneId: string): Promise<void> {
+    const result = await this.request('POST', '/v1.0/m/scene/ha/trigger', undefined, { homeId, sceneId })
+    if (result === false) throw new DriverError('A Tuya não executou a cena. Tente novamente.')
   }
 
   /** Credenciais do MQTT oficial; vencem em `expireTime` segundos. */

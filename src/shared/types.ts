@@ -83,6 +83,14 @@ export type Command =
   /** `minutes` null cancela o timer. */
   | { type: 'timer'; action: TimerAction; minutes: number | null }
 
+/** Cena criada no app da fabricante ("Toque para executar"), so para disparar. */
+export interface Scene {
+  id: string
+  driverId: string
+  name: string
+  enabled: boolean
+}
+
 /** Consumo em watt-hora, como a fabricante informa. */
 export interface EnergyReport {
   /** Ultimos dias, do mais antigo ao mais recente; `date` em AAAA-MM-DD. */

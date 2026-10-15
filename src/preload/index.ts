@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DeviceCandidate, HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DeviceEventBatch, DriverStatus, EnergyReport, RealtimeStatus, Result, TuyaQrCheck } from '../shared/types'
+import type { AppSettings, Command, Device, DeviceEventBatch, DriverStatus, EnergyReport, RealtimeStatus, Result, Scene, TuyaQrCheck } from '../shared/types'
 import type { TuyaQrCode } from '../shared/tuya'
 
 /**
@@ -42,6 +42,11 @@ const api = {
 
   getEnergy: (driverId: string, deviceId: string): Promise<Result<EnergyReport>> =>
     ipcRenderer.invoke('devices:energy', { driverId, deviceId }),
+
+  listScenes: (): Promise<Result<Scene[]>> => ipcRenderer.invoke('scenes:list'),
+
+  runScene: (driverId: string, sceneId: string): Promise<Result<void>> =>
+    ipcRenderer.invoke('scenes:run', { driverId, sceneId }),
 
   getRealtimeStatus: (): Promise<Result<Record<string, RealtimeStatus>>> => ipcRenderer.invoke('realtime:status'),
 

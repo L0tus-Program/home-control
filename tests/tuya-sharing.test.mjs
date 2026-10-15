@@ -291,3 +291,26 @@ test('busca a configuração do MQTT com linkId próprio e valida os campos', as
     await assert.rejects(client.getMqttConfig(), /tempo real/)
   }
 })
+
+test('cenas: lista por casa com campos do SDK e dispara com homeId e sceneId no corpo', async (t) => {
+  const seen = []
+  mockApi(t, ({ path, query, body, init }) => {
+    seen.push([path, init.method, query, body])
+    if (path.endsWith('/homes')) return [{ ownerId: 12 }]
+    if (path === '/v1.0/m/scene/ha/home/scenes') return [
+      { scene_id: 'abc', name: ' Cinema ', enabled: true, actions: [] },
+      { sceneId: 77, name: 'Dormir', enabled: false },
+      { name: 'sem id' }
+    ]
+    if (path === '/v1.0/m/scene/ha/trigger') return true
+    throw new Error(path)
+  })
+  const client = new TuyaSharing(session(), () => {})
+  assert.deepEqual(await client.listScenes(), [
+    { homeId: '12', sceneId: 'abc', name: 'Cinema', enabled: true },
+    { homeId: '12', sceneId: '77', name: 'Dormir', enabled: false }
+  ])
+  await client.triggerScene('12', 'abc')
+  assert.deepEqual(seen.at(-1), ['/v1.0/m/scene/ha/trigger', 'POST', undefined, { homeId: '12', sceneId: 'abc' }])
+  assert.deepEqual(seen[1][2], { homeId: '12' })
+})

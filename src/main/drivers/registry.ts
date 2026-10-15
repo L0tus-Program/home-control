@@ -1,4 +1,4 @@
-import type { Command, Device, DriverStatus, EnergyReport } from '../../shared/types'
+import type { Command, Device, DriverStatus, EnergyReport, Scene } from '../../shared/types'
 import {
   getClientId,
   getCountry,
@@ -184,6 +184,22 @@ export async function getEnergy(driverId: string, deviceId: string): Promise<Ene
   const driver = driverById(driverId)
   if (!driver.getEnergy) throw new DriverError('Esta integracao nao informa consumo de energia.')
   return driver.getEnergy(deviceId)
+}
+
+/** Cenas de todas as integracoes que tem; uma que falhar nao some com as outras. */
+export async function listScenes(): Promise<Scene[]> {
+  const scenes: Scene[] = []
+  for (const driver of drivers()) {
+    if (!driver.listScenes || !driver.isConfigured()) continue
+    scenes.push(...(await driver.listScenes().catch(() => [])))
+  }
+  return scenes
+}
+
+export async function runScene(driverId: string, sceneId: string): Promise<void> {
+  const driver = driverById(driverId)
+  if (!driver.runScene) throw new DriverError('Esta integracao nao tem cenas.')
+  await driver.runScene(sceneId)
 }
 
 export { THINQ_DRIVER_ID }
