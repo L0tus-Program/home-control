@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tuyaEndpoint } from '../shared/tuya'
 import type { TuyaSharingSession } from '../shared/tuya'
@@ -38,20 +38,29 @@ export interface TuyaCredentials {
 
 const CONFIG_PATH = () => join(app.getPath('userData'), 'config.json')
 
+/** A ultima leitura falhou por algo que nao e "arquivo ausente" (antivirus, OneDrive). */
+let unreadable = false
+
 function read(): PersistedConfig {
   try {
-    const path = CONFIG_PATH()
-    if (!existsSync(path)) return {}
-    return JSON.parse(readFileSync(path, 'utf8')) as PersistedConfig
-  } catch {
+    const value = JSON.parse(readFileSync(CONFIG_PATH(), 'utf8')) as PersistedConfig
+    unreadable = false
+    return value && typeof value === 'object' ? value : {}
+  } catch (cause) {
+    unreadable = (cause as NodeJS.ErrnoException)?.code !== 'ENOENT'
     return {}
   }
 }
 
+/** Grava num temporario e troca: queda no meio nunca deixa o arquivo pela metade. */
 function write(config: PersistedConfig): void {
+  // Gravar sobre uma leitura que falhou apagaria token, clientId e sessao Tuya.
+  if (unreadable) throw new Error('Não consegui ler as preferências salvas. Tente de novo em instantes.')
   const path = CONFIG_PATH()
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(config, null, 2), 'utf8')
+  const temporary = `${path}.${process.pid}.tmp`
+  writeFileSync(temporary, JSON.stringify(config, null, 2), 'utf8')
+  renameSync(temporary, path)
 }
 
 export function getCountry(): string {

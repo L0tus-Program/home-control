@@ -51,9 +51,15 @@ function friendly(cause: unknown): string {
   return 'Não consegui manter a atualização em tempo real. Tentando de novo.'
 }
 
-/** Recusa de SUBACK no mqtt.js 5: o `subscribeAsync` rejeita com `code` >= 128. */
+/**
+ * Recusa de SUBACK no mqtt.js 5.16: o `subscribeAsync` rejeita com
+ * `ErrorWithSubackPacket`, que traz `packet.granted` com 0x80 (sem `code`).
+ */
 function isRefusal(cause: unknown): boolean {
-  const code = cause instanceof Error ? (cause as { code?: unknown }).code : undefined
+  if (!(cause instanceof Error)) return false
+  const granted = (cause as { packet?: { granted?: unknown } }).packet?.granted
+  if (Array.isArray(granted)) return granted.some((code) => typeof code === 'number' && code >= 128)
+  const code = (cause as { code?: unknown }).code
   return typeof code === 'number' && code >= 128
 }
 

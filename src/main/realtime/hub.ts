@@ -56,6 +56,11 @@ export class RealtimeHub {
     return this.chain
   }
 
+  /** Termina quando o ultimo `restart` pedido terminou. */
+  idle(): Promise<void> {
+    return this.chain
+  }
+
   /** Ha algum canal ligado ou ligando? */
   isActive(): boolean {
     return this.handles.length > 0

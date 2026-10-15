@@ -45,6 +45,11 @@ export function waitForDeviceState(driverId: string, deviceId: string, matches: 
   return hub?.waitForState(driverId, deviceId, matches) ?? null
 }
 
+/** Termina quando a ultima troca de canal pedida terminou. */
+export function realtimeSettled(): Promise<void> {
+  return hub?.idle() ?? Promise.resolve()
+}
+
 /** Ha canal para fechar antes de sair? Sem canal, o encerramento segue direto. */
 export function realtimeActive(): boolean {
   return hub?.isActive() ?? false

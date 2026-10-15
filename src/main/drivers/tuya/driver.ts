@@ -47,6 +47,8 @@ export class TuyaDriver implements Driver {
   /** Última leitura de cada lâmpada; base para aplicar os relatos parciais do MQTT. */
   private known = new Map<string, Known>()
   private listing: Promise<Device[]> | null = null
+  /** Contador que só cresce: a proteção contra leitura atrasada sobrevive a remoções do cache. */
+  private revision = 0
 
   constructor(
     private readonly cloud: TuyaApi | null,
@@ -188,8 +190,8 @@ export class TuyaDriver implements Driver {
     const link: MqttLink = new MqttLink({
       prepare: async () => {
         if (this.known.size === 0 || topologyDirty) {
-          topologyDirty = false
           await this.listDevices()
+          topologyDirty = false
         }
         const [homes, config] = await Promise.all([listHomeIds(), getMqttConfig()])
         const topics = [
@@ -230,7 +232,7 @@ export class TuyaDriver implements Driver {
         // Quem relata estado está online.
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }
-        entry.rev++
+        entry.rev = ++this.revision
         const device = this.build(entry.info, entry.status, functions)
         if (device) listener.event({ type: 'state', device })
       },

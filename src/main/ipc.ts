@@ -3,7 +3,7 @@ import type { HomeLayout } from '../shared/home'
 import type { AppSettings, Command, Device, DriverStatus, RealtimeStatus, Result } from '../shared/types'
 import { executeCommand, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
-import { realtimeStatuses, waitForDeviceState } from './realtime/service'
+import { realtimeSettled, realtimeStatuses, waitForDeviceState } from './realtime/service'
 import { publicDevice } from '../shared/devices'
 import { TuyaCloud } from './drivers/tuya/cloud'
 import { TuyaLogin } from './drivers/tuya/login'
@@ -65,17 +65,21 @@ export function registerIpc(): void {
     'settings:save-thinq',
     (_event, input: { token?: string; country?: string }): Promise<Result<AppSettings>> =>
       guard(async () => {
-        if (input.token === '') {
-          // Cortesia com a LG: desfaz o registro do cliente MQTT enquanto ainda ha token.
-          const client = thinqClientFromStore()
-          await Promise.race([client?.unregisterClient().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 3000))])
-        }
+        // Cliente capturado antes: depois de apagar o token nao ha como desfazer o registro.
+        const leaving = input.token === '' ? thinqClientFromStore() : null
         if (typeof input.country === 'string' && input.country.trim()) {
           setCountry(input.country)
         }
         // String vazia e um pedido explicito de apagar o token.
         if (typeof input.token === 'string') setToken(input.token)
         invalidateDrivers()
+        if (leaving) {
+          // Cortesia com a LG, so depois de o tempo real antigo parar de reconectar.
+          await realtimeSettled()
+          let timer: ReturnType<typeof setTimeout> | undefined
+          await Promise.race([leaving.unregisterClient().catch(() => undefined), new Promise((resolve) => { timer = setTimeout(resolve, 3000) })])
+          clearTimeout(timer)
+        }
         return currentSettings()
       })
   )

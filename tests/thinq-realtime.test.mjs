@@ -188,3 +188,19 @@ test('getDevice com ficha em cache propaga falha de leitura em vez de dizer offl
   const listed = await driver.listDevices()
   assert.equal(listed[0].state.online, false, 'a lista continua tolerante')
 })
+
+test('queda de rede nao reemite o certificado salvo', async (t) => {
+  const broker = fakeBroker({ autoConnect: false })
+  const client = fakeClient()
+  const saves = []
+  const stored = { clientId: 'cliente-1', privateKeyPem: 'KEY', certificatePem: 'BOM', subscriptions: ['t'] }
+  const driver = new ThinqDriver(client, { loadCredentials: () => stored, saveCredentials: (value) => saves.push(value), connect: broker.connect })
+  const handle = await driver.watch(listen().listener)
+  t.after(() => handle.stop())
+  await until(() => broker.clients.length === 1)
+  broker.last().emit('error', Object.assign(new Error('connect ECONNREFUSED 52.1.2.3:8883'), { code: 'ECONNREFUSED' }))
+  await until(() => broker.clients.length === 2)
+  assert.equal(broker.clients[1].options.cert, 'BOM')
+  assert.equal(saves.length, 0)
+  assert.equal(client.calls.filter((c) => c === 'register').length, 1, 'registro uma vez por sessao')
+})

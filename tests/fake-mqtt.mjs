@@ -9,10 +9,10 @@ export function fakeBroker({ autoConnect = true, refuse = false } = {}) {
     client.options = options
     client.subscribed = []
     client.ended = false
-    // Como o mqtt.js 5: SUBACK 0x80 rejeita com code 128.
+    // Como o mqtt.js 5.16: SUBACK 0x80 rejeita com ErrorWithSubackPacket, sem `code`.
     const refused = typeof refuse === 'function' ? refuse : () => refuse
     client.subscribeAsync = async (topic, opts) => {
-      if (refused(topic)) throw Object.assign(new Error('Subscribe error: Unspecified error'), { code: 128 })
+      if (refused(topic)) throw Object.assign(new Error('Subscribe error: Unspecified error'), { name: 'ErrorWithSubackPacket', packet: { cmd: 'suback', granted: [128] } })
       client.subscribed.push(topic)
       return [{ topic, qos: opts.qos }]
     }

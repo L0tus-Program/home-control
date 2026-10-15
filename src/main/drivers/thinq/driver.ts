@@ -3,7 +3,7 @@ import type { Capability, Command, Device, DeviceState } from '../../../shared/t
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
-import { ThinqClient, type ThinqDeviceListItem } from './client'
+import { ALREADY_SUBSCRIBED, ThinqClient, type ThinqDeviceListItem } from './client'
 import { createCsr } from './csr'
 import { mergeReport, parseThinqMessage } from './realtime'
 
@@ -215,7 +215,24 @@ const FATAL_CODES = new Set(['1103', '1218', '1302', '1303', '1307'])
 /** A assinatura de eventos expira (4464 h); o SDK oficial renova uma vez por dia. */
 const RESUBSCRIBE_MS = 24 * 60 * 60 * 1000
 const REREAD_DELAY_MS = 1500
+const REREAD_MIN_INTERVAL_MS = 10_000
 const RESUBSCRIBE_AFTER_CHANGE_MS = 5000
+/** Assinatura que falhou (cota, rede) e tentada de novo bem antes da renovacao diaria. */
+const SUBSCRIBE_RETRY_MS = 5 * 60 * 1000
+const ROUTE_TTL_MS = 10 * 60 * 1000
+const REISSUE_MIN_INTERVAL_MS = 10 * 60 * 1000
+
+/**
+ * O broker recusou o certificado: CONNACK 4/5 (MQTT 3.1.1), 134/135 (MQTT 5)
+ * ou falha no aperto de mao TLS. Rede caida, DNS e porta bloqueada nao contam.
+ */
+export function isCredentialRefusal(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false
+  const code = (cause as { code?: unknown }).code
+  if (typeof code === 'number' && [4, 5, 134, 135].includes(code)) return true
+  if (typeof code === 'string' && /^ERR_SSL_/.test(code)) return true
+  return /not authori[sz]ed|bad user ?name or password|certificate|handshake|alert/i.test(cause.message)
+}
 
 function errorCode(cause: unknown): string {
   return cause instanceof Error ? String((cause as { code?: unknown }).code ?? '') : ''
@@ -229,6 +246,8 @@ export class ThinqDriver implements Driver {
   private readonly layouts = new Map<string, AcLayout>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
   private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number }>()
+  /** Contador que so cresce: a protecao contra leitura atrasada sobrevive a remocoes do cache. */
+  private revision = 0
 
   constructor(
     private readonly client: ThinqClient | null,
@@ -366,58 +385,102 @@ export class ThinqDriver implements Driver {
   /** Tempo real pelo MQTT oficial (AWS IoT com certificado do cliente). */
   async watch(listener: RealtimeListener): Promise<RealtimeHandle> {
     const client = this.requireClient()
+    let stopped = false
     const timers = new Map<string, ReturnType<typeof setTimeout>>()
     const later = (key: string, delay: number, run: () => void): void => {
-      if (timers.has(key)) return
+      if (stopped || timers.has(key)) return
       timers.set(key, setTimeout(() => { timers.delete(key); run() }, delay))
     }
-    const reread = (id: string): void => later(`reread:${id}`, REREAD_DELAY_MS, () => {
-      this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
-    })
+    const lastReread = new Map<string, number>()
+    const reread = (id: string): void => {
+      const wait = Math.max(REREAD_DELAY_MS, (lastReread.get(id) ?? -Infinity) + REREAD_MIN_INTERVAL_MS - Date.now())
+      later(`reread:${id}`, wait, () => {
+        lastReread.set(id, Date.now())
+        this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
+      })
+    }
 
     let credentials: ThinqMqttCredentials | null = null
-    let reissued = false
+    /** Quando o certificado em uso foi emitido nesta sessao; nunca reemite em seguida. */
+    let issuedAt = 0
+    let credentialFailures = 0
+    let registered = false
+    let route: { url: string; at: number } | null = null
     let subscribed = false
 
-    // Assinar nunca impede a conexao: o que falhar e tentado de novo na renovacao
-    // diaria. So token ou conta invalidos interrompem.
+    /**
+     * Assina eventos dos ares da conta (inclusive os offline agora) e a lista de
+     * aparelhos. "Ja assinado" e sucesso; outra falha fica pendente e e tentada
+     * de novo em minutos. Assinar nunca impede a conexao; so token ou conta
+     * invalidos interrompem.
+     */
     const subscribe = async (): Promise<void> => {
+      // Base para os relatos parciais; a UI normalmente ja leu, mas o canal pode vir antes.
       if (this.known.size === 0) await this.listDevices()
-      const tolerate = (cause: unknown): void => {
-        if (FATAL_CODES.has(errorCode(cause))) throw cause
+      const items = (await client.listDevices()) ?? []
+      let pending = false
+      const attempt = async (run: () => Promise<unknown>): Promise<void> => {
+        try {
+          await run()
+        } catch (cause) {
+          if (FATAL_CODES.has(errorCode(cause))) throw cause
+          if (!ALREADY_SUBSCRIBED.has(errorCode(cause))) pending = true
+        }
       }
-      for (const id of this.known.keys()) await client.subscribeEvents(id).catch(tolerate)
-      await client.subscribeDeviceList().catch(tolerate)
+      for (const item of items) {
+        if (stopped) return
+        if (item.deviceInfo?.deviceType === AC_TYPE) await attempt(() => client.subscribeEvents(item.deviceId))
+      }
+      await attempt(() => client.subscribeDeviceList())
+      subscribed = !pending
+      if (pending) later('subscribe', SUBSCRIBE_RETRY_MS, () => { void subscribe().catch(() => undefined) })
+    }
+
+    const issue = async (): Promise<ThinqMqttCredentials> => {
+      const { csr, privateKeyPem } = await createCsr()
+      if (stopped) throw new DriverError('Tempo real encerrado.')
+      const issued = await client.issueCertificate(csr)
+      const body = asRecord(issued.result ?? issued)
+      const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions.filter((topic): topic is string => typeof topic === 'string') : []
+      if (typeof body.certificatePem !== 'string' || subscriptions.length === 0) {
+        throw new DriverError('A LG não emitiu o certificado do tempo real.')
+      }
+      return { clientId: client.clientId, privateKeyPem, certificatePem: body.certificatePem, subscriptions }
     }
 
     const link: MqttLink = new MqttLink({
       prepare: async (lastError) => {
-        await client.registerClient()
-        const route = await client.getRoute()
-        const url = secureBrokerUrl(route?.mqttServer, LG_BROKER_DOMAINS)
+        // Registro e rota uma vez por sessao: falha so do MQTT nao gasta REST a cada tentativa.
+        if (!registered) {
+          await client.registerClient()
+          registered = true
+        }
+        if (!route || Date.now() - route.at > ROUTE_TTL_MS) {
+          const response = await client.getRoute()
+          route = { url: secureBrokerUrl(response?.mqttServer, LG_BROKER_DOMAINS), at: Date.now() }
+        }
+        if (stopped) throw new DriverError('Tempo real encerrado.')
+
         credentials ??= this.realtime.loadCredentials?.(client.clientId) ?? null
-        // Certificado recusado (revogado, cliente recriado): emite outro uma vez.
-        if (credentials && lastError && !reissued && link.connectedNever()) {
-          reissued = true
+        // Reemite so quando o broker recusou o certificado: na primeira recusa de um
+        // certificado vindo do cofre, ou depois de varias seguidas. Nunca logo apos emitir.
+        if (lastError !== undefined && isCredentialRefusal(lastError)) credentialFailures++
+        const recentlyIssued = Date.now() - issuedAt < REISSUE_MIN_INTERVAL_MS
+        if (credentials && !recentlyIssued && (credentialFailures >= 3 || (credentialFailures >= 1 && issuedAt === 0 && link.connectedNever()))) {
           credentials = null
         }
         if (!credentials) {
-          const { csr, privateKeyPem } = await createCsr()
-          const issued = await client.issueCertificate(csr)
-          const body = asRecord(issued.result ?? issued)
-          const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions.filter((topic): topic is string => typeof topic === 'string') : []
-          if (typeof body.certificatePem !== 'string' || subscriptions.length === 0) {
-            throw new DriverError('A LG não emitiu o certificado do tempo real.')
-          }
-          credentials = { clientId: client.clientId, privateKeyPem, certificatePem: body.certificatePem, subscriptions }
-          this.realtime.saveCredentials?.(credentials)
+          const fresh = await issue()
+          // O token pode ter sido removido durante a emissao: nada volta ao cofre.
+          if (stopped) throw new DriverError('Tempo real encerrado.')
+          credentials = fresh
+          issuedAt = Date.now()
+          credentialFailures = 0
+          this.realtime.saveCredentials?.(fresh)
         }
-        if (!subscribed) {
-          await subscribe()
-          subscribed = true
-        }
+        if (!subscribed) await subscribe()
         return {
-          url,
+          url: route.url,
           options: { clientId: client.clientId, key: credentials.privateKeyPem, cert: credentials.certificatePem, protocolVersion: 4, clean: false, keepalive: 60 },
           topics: credentials.subscriptions
         }
@@ -431,8 +494,7 @@ export class ThinqDriver implements Driver {
           listener.event({ type: 'refresh' })
           // Aparelho novo precisa da propria assinatura de eventos.
           later('subscribe', RESUBSCRIBE_AFTER_CHANGE_MS, () => {
-            this.known.clear()
-            void subscribe().catch(() => undefined)
+            void this.listDevices().then(() => subscribe()).catch(() => undefined)
           })
           return
         }
@@ -443,11 +505,15 @@ export class ThinqDriver implements Driver {
           reread(message.deviceId)
           return
         }
+        credentialFailures = 0
         entry.raw = mergeReport(entry.raw, message.report)
-        entry.rev++
+        entry.rev = ++this.revision
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })
       },
-      status: (state, error) => listener.status(state, error),
+      status: (state, error) => {
+        if (state === 'live') credentialFailures = 0
+        listener.status(state, error)
+      },
       reconnected: () => listener.event({ type: 'refresh' }),
       isFatal: (cause) => FATAL_CODES.has(errorCode(cause)),
       ...(this.realtime.connect ? { connect: this.realtime.connect } : {})
@@ -457,6 +523,7 @@ export class ThinqDriver implements Driver {
     link.start()
     return {
       stop: async () => {
+        stopped = true
         clearInterval(renew)
         for (const timer of timers.values()) clearTimeout(timer)
         timers.clear()

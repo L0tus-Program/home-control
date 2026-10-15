@@ -197,7 +197,6 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
 
   const send = useCallback(async (device: Device, command: Command) => {
     const context = contextId.current
-    const sentAt = Date.now()
     const key = deviceKey(device)
     const optimistic = applyOptimistic(device, command)
     const replace = (next: Device): void => setHome((current) => ({
@@ -226,8 +225,8 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
     else counts.delete(key)
     pendingKeys.current = new Set(counts.keys())
     setPending(pendingKeys.current)
-    // Um evento chegou depois do envio (os ignorados durante o voo nao contam): ele e mais novo.
-    if (left === 0 && !((eventAt.current.get(key) ?? 0) > sentAt && result.ok)) replace(result.ok ? result.data : device)
+    // Com tempo real, a resposta ja e o evento que confirmou o valor pedido.
+    if (left === 0) replace(result.ok ? result.data : device)
     if (!result.ok) setError(result.error)
   }, [])
 
