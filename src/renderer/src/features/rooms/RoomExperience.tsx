@@ -218,7 +218,7 @@ export function RoomExperience({
       <div className="rooms-hero">
         <div>
           <div className="content__integration">Cômodos 3D</div>
-          <h1>{roomName}, em outra dimensão.</h1>
+          <h1>{roomName}</h1>
           <p>{editing
             ? 'Arraste móveis e aparelhos pela maquete. Nada é enviado aos aparelhos enquanto você edita.'
             : 'Explore sua casa em 3D. Clique em lâmpadas e ar-condicionado para controlar tudo em tempo real.'}</p>
