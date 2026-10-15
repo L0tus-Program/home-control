@@ -3,16 +3,21 @@ import { deviceKey } from '../../../../shared/devices'
 import {
   ASSET_CATALOG,
   GRID_STEP,
+  addFurniture,
   deleteRoom,
   deviceRefKey,
   findDevice,
   findRoom,
+  isAssetId,
+  isDeviceAsset,
   removeItem,
   rotateItem,
   updateItem,
   wallOf,
+  type FurnitureAssetId,
   type HomeLayout,
-  type RoomItem
+  type RoomItem,
+  type Vec3
 } from '../../../../shared/home'
 import type { Command, Device, DeviceKind } from '../../../../shared/types'
 import { DeviceControlModal } from '../../components/DeviceControlModal'
@@ -193,8 +198,20 @@ export function RoomExperience({
     return () => window.removeEventListener('keydown', onKey)
   }, [editing, roomId, selectedItemId, draft, moveItem])
 
-  const edit = useMemo(() => (editing ? { selectedItemId, onSelectItem: setSelectedItemId, onMoveItem: moveItem } : undefined),
-    [editing, selectedItemId, moveItem])
+  // Soltar da paleta e um evento isolado: parte do rascunho mais recente.
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const dropAsset = useCallback((assetId: string, position: Vec3) => {
+    const current = draftRef.current
+    if (!current || !roomId || !isAssetId(assetId) || isDeviceAsset(assetId)) return
+    const result = addFurniture(current, roomId, assetId as FurnitureAssetId, { position })
+    setDraft(result.layout)
+    if (result.itemId) setSelectedItemId(result.itemId)
+  }, [roomId])
+
+  const edit = useMemo(() => (editing
+    ? { selectedItemId, onSelectItem: setSelectedItemId, onMoveItem: moveItem, onDropAsset: dropAsset }
+    : undefined), [editing, selectedItemId, moveItem, dropAsset])
 
   return (
     <section className="rooms-page" aria-label="Cômodo 3D">

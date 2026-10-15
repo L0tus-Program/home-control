@@ -14,6 +14,7 @@ import {
   type RoomItem
 } from '../../../../../shared/home'
 import type { Device } from '../../../../../shared/types'
+import { ASSET_DRAG_TYPE } from '../dragAsset'
 import { useHoverCursor } from '../hooks'
 import { cameraTarget, ROOM, type Vec3 } from '../layout'
 import { Floor } from './Floor'
@@ -30,6 +31,8 @@ export interface RoomSceneEdit {
   selectedItemId: string | null
   onSelectItem: (id: string | null) => void
   onMoveItem: (id: string, move: ItemMove) => void
+  /** Movel arrastado da paleta e solto num ponto do piso. */
+  onDropAsset?: (assetId: string, position: Vec3) => void
 }
 
 interface RoomSceneProps {
@@ -232,8 +235,9 @@ function EditGrid({ dimensions }: { dimensions: RoomDimensions }) {
   )
 }
 
-function SceneContent({ room, devices, selectedKey, onSelect, edit }: RoomSceneProps) {
-  const groupRef = useRef<THREE.Group>(null)
+function SceneContent({ room, devices, selectedKey, onSelect, edit, groupRef }: RoomSceneProps & {
+  groupRef: React.RefObject<THREE.Group | null>
+}) {
   const [intro, setIntro] = useState(true)
   const { width, depth } = room.dimensions
 
@@ -288,7 +292,17 @@ function cameraPosition(dimensions: RoomDimensions, target: Vec3): Vec3 {
   return [target[0] + 4.4 * factor, target[1] + 3 * factor, target[2] + 4.7 * factor]
 }
 
+/** Expoe a camera do canvas para quem esta fora dele (soltar da paleta). */
+function CameraBridge({ cameraRef }: { cameraRef: React.RefObject<THREE.Camera | null> }) {
+  const camera = useThree((state) => state.camera)
+  useEffect(() => { cameraRef.current = camera }, [camera, cameraRef])
+  return null
+}
+
 export function RoomScene({ room, devices, selectedKey, onSelect, edit }: RoomSceneProps) {
+  const groupRef = useRef<THREE.Group>(null)
+  const cameraRef = useRef<THREE.Camera | null>(null)
+  const [dropping, setDropping] = useState(false)
   const target = useMemo(() => cameraTarget(room.dimensions), [room.dimensions])
   // So na montagem: redimensionar no editor nao tira a camera de onde o usuario deixou.
   const [initialCamera] = useState(() => cameraPosition(room.dimensions, target))
@@ -298,7 +312,32 @@ export function RoomScene({ room, devices, selectedKey, onSelect, edit }: RoomSc
   }).length
 
   return (
-    <div className="room-canvas-wrap">
+    <div
+      className={`room-canvas-wrap${dropping ? ' is-drop-target' : ''}`}
+      onDragOver={(event) => {
+        if (!edit?.onDropAsset || !event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(event) => {
+        setDropping(false)
+        const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE)
+        const camera = cameraRef.current
+        if (!edit?.onDropAsset || !assetId || !camera) return
+        event.preventDefault()
+        const rect = event.currentTarget.getBoundingClientRect()
+        const pointer = new THREE.Vector2(
+          ((event.clientX - rect.left) / rect.width) * 2 - 1,
+          -((event.clientY - rect.top) / rect.height) * 2 + 1
+        )
+        const raycaster = new THREE.Raycaster()
+        raycaster.setFromCamera(pointer, camera)
+        const hit = floorHit(toRoomRay(raycaster.ray, groupRef.current))
+        edit.onDropAsset(assetId, hit ? [snap(hit.x), 0, snap(hit.z)] : [0, 0, 0])
+      }}
+    >
       {/* Absoluto: o tamanho vem do card, nunca do canvas. Em fluxo, a altura
           do canvas realimentava o layout e crescia ao maximizar a janela. */}
       <Canvas
@@ -313,7 +352,8 @@ export function RoomScene({ room, devices, selectedKey, onSelect, edit }: RoomSc
         <color attach="background" args={['#0b0f1a']} />
         <fog attach="fog" args={['#0b0f1a', 12, 30]} />
         <Atmosphere lightsOn={lightsOn} target={target} />
-        <SceneContent room={room} devices={devices} selectedKey={selectedKey} onSelect={onSelect} edit={edit} />
+        <CameraBridge cameraRef={cameraRef} />
+        <SceneContent room={room} devices={devices} selectedKey={selectedKey} onSelect={onSelect} edit={edit} groupRef={groupRef} />
         <OrbitControls
           makeDefault
           enablePan={false}

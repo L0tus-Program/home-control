@@ -506,17 +506,17 @@ export function rotateItem(layout: HomeLayout, roomId: string, itemId: string, d
   return updateItem(layout, roomId, itemId, { rotationY: item.rotationY + direction * Math.PI / 2 })
 }
 
-/** Novo movel do catalogo, no centro do comodo. */
+/** Novo movel do catalogo, no ponto pedido (ou no centro), sempre dentro do comodo. */
 export function addFurniture(
   layout: HomeLayout,
   roomId: string,
   assetId: FurnitureAssetId,
-  newId: () => string = newItemId
+  { position = [0, 0, 0], newId = newItemId }: { position?: Vec3; newId?: () => string } = {}
 ): { layout: HomeLayout; itemId?: string } {
   const room = findRoom(layout, roomId)
   if (!room || room.items.length >= ROOM_LIMITS.itemsPerRoom) return { layout }
   const item = clampItem({
-    id: newId(), assetId, attachment: ASSET_CATALOG[assetId].attachment, position: [0, 0, 0], rotationY: 0, scale: 1
+    id: newId(), assetId, attachment: ASSET_CATALOG[assetId].attachment, position: [...position], rotationY: 0, scale: 1
   }, room.dimensions)
   return { layout: mapRoom(layout, roomId, (current) => ({ ...current, items: [...current.items, item] })), itemId: item.id }
 }

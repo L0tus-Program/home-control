@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import {
   ASSET_CATALOG,
-  FURNITURE_ASSETS,
-  FURNITURE_CATEGORIES,
   ROOM_LIMITS,
   addFurniture,
   assetForDeviceKind,
   assignDevice,
   deviceRefKey,
   findDevice,
-  furnitureCategory,
   removeItem,
   renameRoom,
   resetRoom,
@@ -24,6 +21,7 @@ import {
 import { deviceKey } from '../../../../shared/devices'
 import type { Device } from '../../../../shared/types'
 import { PlusIcon, ResetIcon, RotateIcon, TrashIcon } from '../../components/Icons'
+import { FurniturePalette } from './FurniturePalette'
 
 interface Props {
   /** Rascunho da casa inteira; so vai para o disco ao salvar. */
@@ -203,22 +201,11 @@ export function RoomEditor({ layout, room, devices, selectedItemId, saving, erro
 
         <section className="room-editor__section" aria-labelledby="room-furniture-title">
           <h4 id="room-furniture-title">Adicionar móvel</h4>
-          {FURNITURE_CATEGORIES.map((category) => (
-            <div key={category.id} className="room-editor__group" role="group" aria-label={category.label}>
-              <span className="field__hint">{category.label}</span>
-              <div className="room-editor__chips">
-                {FURNITURE_ASSETS.filter((assetId) => furnitureCategory(assetId) === category.id).map((assetId) => (
-                  <button key={assetId} type="button" className="room-chip" onClick={() => {
-                    const result = addFurniture(layout, room.id, assetId)
-                    onChange(result.layout)
-                    if (result.itemId) onSelectItem(result.itemId)
-                  }}>
-                    <PlusIcon size={13} />{ASSET_CATALOG[assetId].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+          <FurniturePalette room={room} onAdd={(assetId) => {
+            const result = addFurniture(layout, room.id, assetId)
+            onChange(result.layout)
+            if (result.itemId) onSelectItem(result.itemId)
+          }} />
         </section>
 
         <section className="room-editor__section room-editor__danger">

@@ -165,7 +165,7 @@ test('aparelho novo num cômodo redimensionado cai dentro dele', async (t) => {
 
 test('móvel novo entra no centro e apelido vazio volta ao nome da conta', () => {
   let layout = withDevices(lamp('a'))
-  const added = home.addFurniture(layout, 'sala', 'plant', ids)
+  const added = home.addFurniture(layout, 'sala', 'plant', { newId: ids })
   const plant = item(added.layout, 'sala', added.itemId)
   assert.deepEqual(plant.position, [0, 0, 0])
   assert.equal(plant.device, undefined)
@@ -189,7 +189,7 @@ test('restaurar padrão volta tamanho e móveis e mantém nome, aparelhos e apel
   layout = home.renameRoom(layout, 'sala', 'Meu quarto')
   layout = home.updateItem(layout, 'sala', a.id, { alias: 'Luz da cama', position: [2, 0, 2] })
   layout = home.resizeRoom(layout, 'sala', { width: 5, depth: 4 })
-  layout = home.addFurniture(layout, 'sala', 'bed-double', ids).layout
+  layout = home.addFurniture(layout, 'sala', 'bed-double', { newId: ids }).layout
   layout = home.removeItem(layout, 'sala', byAsset(base(layout), 'sofa-l').id)
 
   const reset = home.resetRoom(layout, 'sala')
@@ -210,7 +210,7 @@ test('todos os móveis do catálogo cabem no menor cômodo e passam na validaç�
   const parse = await validator(t)
   let layout = home.resizeRoom(home.createHomeLayout(), 'sala', { width: 5, depth: 4 })
   for (const assetId of home.FURNITURE_ASSETS) {
-    const added = home.addFurniture(layout, 'sala', assetId, ids)
+    const added = home.addFurniture(layout, 'sala', assetId, { newId: ids })
     assert.ok(added.itemId, assetId)
     layout = home.rotateItem(added.layout, 'sala', added.itemId)
   }
@@ -218,4 +218,13 @@ test('todos os móveis do catálogo cabem no menor cômodo e passam na validaç�
   assert.doesNotThrow(() => parse(layout))
   assert.ok(home.FURNITURE_ASSETS.length >= 17)
   assert.ok(home.FURNITURE_ASSETS.every((id) => ['sala', 'quarto', 'mesa'].includes(home.furnitureCategory(id))))
+})
+
+test('móvel solto num ponto da maquete fica ali, dentro do cômodo', () => {
+  const layout = home.createHomeLayout()
+  const placed = home.addFurniture(layout, 'sala', 'chair', { position: [1.5, 0, 0.75], newId: ids })
+  assert.deepEqual(item(placed.layout, 'sala', placed.itemId).position, [1.5, 0, 0.75])
+  const outside = home.addFurniture(layout, 'sala', 'wardrobe', { position: [40, 0, -40], newId: ids })
+  const wardrobe = item(outside.layout, 'sala', outside.itemId)
+  assert.ok(inside(base(outside.layout), wardrobe))
 })
