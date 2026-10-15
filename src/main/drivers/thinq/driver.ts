@@ -195,7 +195,8 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
     humidity: numeric(asRecord(raw.airQualitySensor).humidity),
     ...readOptions(raw, layout),
     ...readTimers(raw, layout),
-    ...readAirQuality(asRecord(raw.airQualitySensor))
+    ...readAirQuality(asRecord(raw.airQualitySensor)),
+    ...readFilter(asRecord(raw.filterInfo))
   }
 }
 
@@ -213,6 +214,33 @@ function readTimers(raw: Record<string, unknown>, layout: AcLayout): Pick<Device
       : 0
   }
   return Object.keys(result).length > 0 ? { timer: result } : {}
+}
+
+/** Filtro: horas de uso e, quando informado, a vida util ou o que resta. Zero na vida util = desconhecida. */
+function readFilter(info: Record<string, unknown>): Pick<DeviceState, 'filter'> {
+  const positive = (value: unknown, allowZero = false): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && (allowZero ? value >= 0 : value > 0) ? value : undefined
+  const filter = {
+    usedHours: positive(info.usedTime, true),
+    lifetimeHours: positive(info.filterLifetime),
+    remainingPercent: typeof info.filterRemainPercent === 'number' && info.filterRemainPercent >= 0 && info.filterRemainPercent <= 100 ? info.filterRemainPercent : undefined
+  }
+  const present = Object.fromEntries(Object.entries(filter).filter(([, value]) => value !== undefined))
+  return Object.keys(present).length > 0 ? { filter: present } : {}
+}
+
+/** Texto dos avisos (`pushCode`) que o perfil declara em `notification.push`. */
+const PUSH_MESSAGES: Record<string, string> = {
+  WATER_IS_FULL: 'O reservatório de água está cheio.',
+  FILTER_RESET: 'Hora de limpar ou trocar o filtro.',
+  NEED_FILTER_REPLACE: 'Hora de limpar ou trocar o filtro.',
+  ERROR: 'O aparelho informou um erro.'
+}
+
+export function pushMessage(code: string | undefined): string {
+  if (code && PUSH_MESSAGES[code]) return PUSH_MESSAGES[code]
+  const readable = code ? code.toLowerCase().replace(/_/g, ' ') : ''
+  return readable ? `Aviso do aparelho: ${readable}.` : 'O aparelho enviou um aviso.'
 }
 
 /** Sensor de particulas: so os valores que o modelo publica. */
@@ -540,7 +568,9 @@ export class ThinqDriver implements Driver {
       }
       for (const item of items) {
         if (stopped) return
-        if (item.deviceInfo?.deviceType === AC_TYPE) await attempt(() => client.subscribeEvents(item.deviceId))
+        if (item.deviceInfo?.deviceType !== AC_TYPE) continue
+        await attempt(() => client.subscribeEvents(item.deviceId))
+        await attempt(() => client.subscribePush(item.deviceId))
       }
       await attempt(() => client.subscribeDeviceList())
       subscribed = !pending
@@ -609,7 +639,12 @@ export class ThinqDriver implements Driver {
           })
           return
         }
-        if (message.kind === 'push') return
+        if (message.kind === 'push') {
+          const item = this.known.get(message.deviceId)?.item
+          const title = item ? this.base(item).name : 'Ar-condicionado LG'
+          listener.event({ type: 'notice', deviceId: message.deviceId, title, message: pushMessage(message.code) })
+          return
+        }
         const entry = this.known.get(message.deviceId)
         const layout = this.layouts.get(message.deviceId)
         if (!entry || !layout) {

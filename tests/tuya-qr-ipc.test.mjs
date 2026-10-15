@@ -43,6 +43,7 @@ async function fixture(t) {
       export const BrowserWindow = { fromWebContents: () => null }
       export const shell = { openExternal: async () => {} }
       export const powerMonitor = { on: () => {} }
+      export const Notification = class { static isSupported() { return false } }
     `,
     './drivers/registry': `
       const context = globalThis.__tuyaQrIpc

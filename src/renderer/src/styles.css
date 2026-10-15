@@ -2305,3 +2305,20 @@ input {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Avisos dos aparelhos, acima de tudo no canto da janela. */
+.notices {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 40px));
+}
+
+.notice {
+  margin: 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
