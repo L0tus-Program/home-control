@@ -1,7 +1,12 @@
+import type { IClientOptions, MqttClient } from 'mqtt'
 import type { Capability, Command, Device } from '../../../shared/types'
-import { DriverError, type Driver } from '../types'
+import { secureBrokerUrl, TUYA_BROKER_DOMAINS } from '../../realtime/broker'
+import { MqttLink } from '../../realtime/mqtt-link'
+import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
 import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, isControllableBulb, powerCommand, readState } from './bulb'
 import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
+import { mergeStatus, parseTuyaMessage, resolveReport } from './realtime'
+import type { TuyaMqttConfig } from './sharing'
 
 /** Cloud de projeto e compartilhamento QR entregam o mesmo modelo ao driver. */
 export interface TuyaApi {
@@ -10,18 +15,37 @@ export interface TuyaApi {
   getStatus(id: string): Promise<TuyaStatusItem[]>
   getFunctions(id: string): Promise<{ functions: TuyaFunction[] }>
   sendCommands(id: string, commands: TuyaCommand[]): Promise<void>
+  /** Só a conexão por QR Code tem tempo real. */
+  listHomeIds?(): Promise<string[]>
+  getMqttConfig?(): Promise<TuyaMqttConfig>
 }
 
 export const TUYA_DRIVER_ID = 'tuya'
 const LIGHT_CATEGORIES = new Set(['dj', 'dc', 'dd', 'xdd', 'fwd', 'tgq'])
+/** Sessão QR removida ou vencida: reconectar não adianta, só um novo QR Code. */
+const FATAL_CODES = new Set(['1010', '1011', '1012', '1106'])
+/** Relatos que não sabemos traduzir viram uma leitura pela nuvem, no máximo uma por intervalo. */
+const REREAD_DELAY_MS = 1000
+/** Aparelho entrou ou saiu: os tópicos mudam, então a conexão é refeita. */
+const TOPOLOGY_RESTART_MS = 3000
+
+interface Known {
+  info: TuyaApiDevice
+  status: TuyaStatusItem[]
+}
 
 /** Integração oficial Tuya Cloud, independente de LG ThinQ. */
 export class TuyaDriver implements Driver {
   readonly id = TUYA_DRIVER_ID
   readonly label = 'Tuya'
   private functions = new Map<string, TuyaFunction[]>()
+  /** Última leitura de cada lâmpada; base para aplicar os relatos parciais do MQTT. */
+  private known = new Map<string, Known>()
 
-  constructor(private readonly cloud: TuyaApi | null) {}
+  constructor(
+    private readonly cloud: TuyaApi | null,
+    private readonly connectMqtt?: (url: string, options: IClientOptions) => MqttClient
+  ) {}
   isConfigured(): boolean { return this.cloud !== null }
 
   private requireCloud(): TuyaApi {
@@ -41,11 +65,13 @@ export class TuyaDriver implements Driver {
   async listDevices(): Promise<Device[]> {
     const list = await this.requireCloud().listDevices()
     const devices: Device[] = []
+    const seen = new Set<string>()
     for (const info of list) {
       if (!LIGHT_CATEGORIES.has(info.category)) continue
       const device = await this.hydrate(info)
-      if (device) devices.push(device)
+      if (device) { devices.push(device); seen.add(info.id) }
     }
+    for (const id of this.known.keys()) if (!seen.has(id)) this.known.delete(id)
     return devices
   }
 
@@ -60,6 +86,12 @@ export class TuyaDriver implements Driver {
   private async hydrate(info: TuyaApiDevice): Promise<Device | null> {
     const status = info.status ?? await this.requireCloud().getStatus(info.id)
     const functions = await this.getFunctions(info.id)
+    const device = this.build(info, status, functions)
+    if (device) this.known.set(info.id, { info: { ...info, status: undefined }, status })
+    return device
+  }
+
+  private build(info: TuyaApiDevice, status: TuyaStatusItem[], functions: TuyaFunction[]): Device | null {
     if (!isControllableBulb(status, functions)) return null
     const caps = bulbCapabilities(status, functions)
     const modes = caps.color ? bulbModes(status, functions) : []
@@ -100,6 +132,82 @@ export class TuyaDriver implements Driver {
       }
       default:
         throw new DriverError(`Comando não suportado pela lâmpada: ${command.type}`)
+    }
+  }
+
+  /** Tempo real pelo MQTT oficial da conexão por QR Code. */
+  async watch(listener: RealtimeListener): Promise<RealtimeHandle> {
+    const api = this.cloud
+    const listHomeIds = api?.listHomeIds?.bind(api)
+    const getMqttConfig = api?.getMqttConfig?.bind(api)
+    if (!listHomeIds || !getMqttConfig) {
+      listener.status('off')
+      return { stop: async () => {} }
+    }
+
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const later = (key: string, delay: number, run: () => void): void => {
+      if (timers.has(key)) return
+      timers.set(key, setTimeout(() => { timers.delete(key); run() }, delay))
+    }
+    const reread = (id: string): void => later(`reread:${id}`, REREAD_DELAY_MS, () => {
+      this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
+    })
+
+    const link: MqttLink = new MqttLink({
+      prepare: async () => {
+        if (this.known.size === 0) await this.listDevices()
+        const [homes, config] = await Promise.all([listHomeIds(), getMqttConfig()])
+        const topics = [
+          ...homes.map((home) => config.ownerTopic.replace('{ownerId}', home)),
+          ...[...this.known.values()].map(({ info }) => config.deviceTopic.replace('{devId}', info.id) + (info.local ? '/pen' : '/sta'))
+        ]
+        return {
+          url: secureBrokerUrl(config.url, TUYA_BROKER_DOMAINS),
+          options: { clientId: config.clientId, username: config.username, password: config.password, protocolVersion: 4, keepalive: 60 },
+          topics,
+          expiresAt: Date.now() + config.expireTime * 1000
+        }
+      },
+      message: (_topic, payload) => {
+        let raw: unknown
+        try { raw = JSON.parse(payload.toString('utf8')) } catch { return }
+        const message = parseTuyaMessage(raw)
+        if (!message) return
+        const entry = this.known.get(message.devId)
+        if (message.kind === 'changed') {
+          listener.event({ type: 'refresh' })
+          if (message.topology) later('topology', TOPOLOGY_RESTART_MS, () => link.restart())
+          return
+        }
+        if (!entry) return
+        if (message.kind === 'availability') {
+          entry.info = { ...entry.info, online: message.online }
+          listener.event({ type: 'availability', deviceId: message.devId, online: message.online })
+          return
+        }
+        const functions = this.functions.get(message.devId) ?? []
+        const { updates, unresolved } = resolveReport(message.items, entry.info, functions)
+        if (unresolved) reread(message.devId)
+        if (updates.length === 0) return
+        // Quem relata estado está online.
+        entry.status = mergeStatus(entry.status, updates)
+        entry.info = { ...entry.info, online: true }
+        const device = this.build(entry.info, entry.status, functions)
+        if (device) listener.event({ type: 'state', device })
+      },
+      status: (state, error) => listener.status(state, error),
+      reconnected: () => listener.event({ type: 'refresh' }),
+      isFatal: (cause) => cause instanceof Error && FATAL_CODES.has(String((cause as { code?: unknown }).code)),
+      ...(this.connectMqtt ? { connect: this.connectMqtt } : {})
+    })
+    link.start()
+    return {
+      stop: async () => {
+        for (const timer of timers.values()) clearTimeout(timer)
+        timers.clear()
+        await link.stop()
+      }
     }
   }
 }
