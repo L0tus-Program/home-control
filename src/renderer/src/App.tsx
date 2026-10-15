@@ -164,7 +164,7 @@ export function App(): React.JSX.Element {
                 <div className="content__head">
                   <div>
                     <div className="content__integration">{label}</div>
-                    <h1>{greeting()}, Felipe</h1>
+                    <h1>{greeting()}</h1>
                     <p aria-live="polite">
                       {settingsLoading ? 'Carregando sua casa…' : loading && visibleDevices.length === 0
                         ? 'Buscando seus aparelhos…' : connected
