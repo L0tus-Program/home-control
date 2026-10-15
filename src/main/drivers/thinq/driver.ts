@@ -58,6 +58,10 @@ interface AcLayout {
   timers: TimerAction[]
   /** O perfil declara avisos (`notification.push`): so entao assinamos. */
   push: boolean
+  /** O perfil declara o sensor de particulas; sem ele, PM no estado e ruido (zeros). */
+  airQuality: boolean
+  /** Idem para a umidade do mesmo bloco. */
+  humidity: boolean
   /** Lido do perfil de energia, a parte; falso se o aparelho nao informa. */
   energy?: boolean
 }
@@ -69,6 +73,8 @@ const ENERGY_CACHE_MS = 30 * 60 * 1000
 const ENERGY_RETRY_MS = 2 * 60 * 1000
 /** Perfil de energia que falhou por rede ou cota: nova tentativa depois disso. */
 const ENERGY_PROFILE_RETRY_MS = 10 * 60 * 1000
+/** Falhas que passam sozinhas: cota da API e aparelho offline. */
+const TRANSIENT_CODES = new Set(['1306', '1309', '1222', '2209', '2210'])
 /** "Recurso nao existe neste modelo": resposta definitiva, nao falha passageira. */
 const NOT_SUPPORTED_CODES = new Set(['1220', '2201', '1219', '1221'])
 
@@ -93,8 +99,8 @@ export function energyEntries(response: unknown): Array<{ date?: string; wh: num
   })
 }
 
-/** A LG programa timers relativos em horas e minutos; 24 h cobre o uso comum. */
-const LG_TIMER_MAX_MINUTES = 24 * 60
+/** A LG programa timers relativos em horas (0-23) e minutos: ate 23 h 59 min. */
+const LG_TIMER_MAX_MINUTES = 23 * 60 + 59
 
 /** Campos do recurso `timer` para cada acao. */
 const TIMER_FIELDS: Record<TimerAction, { hour: string; minute: string; flag: string }> = {
@@ -198,7 +204,9 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
     targets,
     options,
     timers,
-    push: Array.isArray(asRecord(profile.notification).push) && (asRecord(profile.notification).push as unknown[]).length > 0
+    push: Array.isArray(asRecord(profile.notification).push) && (asRecord(profile.notification).push as unknown[]).length > 0,
+    airQuality: ['PM1', 'PM2', 'PM10'].some((key) => key in asRecord(property.airQualitySensor)),
+    humidity: 'humidity' in asRecord(property.airQualitySensor)
   }
 }
 
@@ -228,10 +236,10 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
       layout.fanKey && typeof airFlow[layout.fanKey] === 'string'
         ? (airFlow[layout.fanKey] as string)
         : undefined,
-    humidity: numeric(asRecord(raw.airQualitySensor).humidity),
+    humidity: layout.humidity ? numeric(asRecord(raw.airQualitySensor).humidity) : undefined,
     ...readOptions(raw, layout),
     ...readTimers(raw, layout),
-    ...readAirQuality(asRecord(raw.airQualitySensor)),
+    ...(layout.airQuality ? readAirQuality(asRecord(raw.airQualitySensor)) : {}),
     ...readFilter(asRecord(raw.filterInfo))
   }
 }
@@ -345,7 +353,8 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   if (layout.modes.length > 0) capabilities.push({ kind: 'mode', options: layout.modes })
   if (layout.fanOptions.length > 0) capabilities.push({ kind: 'fan', options: layout.fanOptions })
   for (const key of layout.options) capabilities.push({ kind: 'option', key })
-  if (layout.energy === true) capabilities.push({ kind: 'energy' })
+  // Indefinido (perfil de energia ainda nao respondeu) tambem mostra o painel: ele tenta de novo.
+  if (layout.energy !== false) capabilities.push({ kind: 'energy' })
   if (layout.timers.length > 0) capabilities.push({ kind: 'timer', actions: layout.timers, maxMinutes: LG_TIMER_MAX_MINUTES })
   return capabilities
 }
@@ -403,6 +412,8 @@ export class ThinqDriver implements Driver {
   /** Por aparelho: a leitura (em andamento ou pronta), o dia a que se refere e ate quando vale. */
   private readonly energy = new Map<string, { day: string; until: number; report: Promise<EnergyReport> }>()
   private readonly energyProfileTried = new Map<string, number>()
+  private readonly energyProfileError = new Map<string, string>()
+  private readonly energyProfileErrorCode = new Map<string, string>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
   /** `history`: relatos recentes, para reaplicar sobre uma leitura da nuvem que comecou antes deles. */
   private readonly known = new Map<string, {
@@ -523,10 +534,10 @@ export class ThinqDriver implements Driver {
    * Perfil de energia a parte. Resposta sem `energyUsage` ou "nao suportado" e
    * definitivo; falha de rede ou cota deixa indefinido e tenta de novo depois.
    */
-  private async probeEnergy(deviceId: string, layout: AcLayout): Promise<void> {
+  private async probeEnergy(deviceId: string, layout: AcLayout, force = false): Promise<void> {
     if (layout.energy !== undefined) return
     const tried = this.energyProfileTried.get(deviceId)
-    if (tried !== undefined && Date.now() - tried < ENERGY_PROFILE_RETRY_MS) return
+    if (!force && tried !== undefined && Date.now() - tried < ENERGY_PROFILE_RETRY_MS) return
     this.energyProfileTried.set(deviceId, Date.now())
     try {
       const response = asRecord(await this.requireClient().getEnergyProfile(deviceId))
@@ -534,6 +545,10 @@ export class ThinqDriver implements Driver {
       layout.energy = Array.isArray(properties) ? properties.includes(ENERGY_PROPERTY) : ENERGY_PROPERTY in asRecord(properties)
     } catch (cause) {
       if (NOT_SUPPORTED_CODES.has(errorCode(cause))) layout.energy = false
+      else {
+        this.energyProfileError.set(deviceId, cause instanceof Error ? cause.message : String(cause))
+        this.energyProfileErrorCode.set(deviceId, errorCode(cause))
+      }
     }
   }
 
@@ -552,15 +567,28 @@ export class ThinqDriver implements Driver {
     // Falha ou leitura incompleta valem pouco tempo no cache.
     report.then((value) => {
       if (value.thisMonthWh === undefined || value.lastMonthWh === undefined) entry.until = Date.now() + ENERGY_RETRY_MS
-    }, () => { entry.until = Date.now() + ENERGY_RETRY_MS })
+    }, () => {
+      // Erro nao fica no cache: o painel pede de novo so quando alguem abre ou clica em tentar.
+      if (this.energy.get(deviceId) === entry) this.energy.delete(deviceId)
+    })
     return report
   }
 
   private async readEnergy(deviceId: string): Promise<EnergyReport> {
     const client = this.requireClient()
     const layout = await this.layoutFor(deviceId)
+    // Quem abriu o painel quer o consumo agora: tenta o perfil sem esperar o intervalo
+    // (salvo se o layoutFor acabou de tentar).
+    const tried = this.energyProfileTried.get(deviceId)
+    if (tried === undefined || Date.now() - tried > 5000) await this.probeEnergy(deviceId, layout, true)
     if (layout.energy === false) throw new DriverError('Este aparelho nao informa o consumo de energia.')
-    if (layout.energy === undefined) throw new DriverError('Nao consegui ler o consumo agora. Tente de novo em instantes.')
+    if (layout.energy === undefined) {
+      const reason = this.energyProfileError.get(deviceId)?.replace(/[.\s]+$/, '')
+      const code = this.energyProfileErrorCode.get(deviceId) ?? ''
+      // So sugere tentar de novo quando adianta (rede, cota, aparelho offline).
+      const transient = code === '' || TRANSIENT_CODES.has(code)
+      throw new DriverError(`Nao consegui ler o consumo${reason ? `: ${reason}` : ''}.${transient ? ' Tente de novo em instantes.' : ''}`)
+    }
     const today = new Date()
     const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)
     const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
