@@ -38,7 +38,7 @@
     "vite": "^7.3.7"
   },
   "build": {
-    "appId": "ai.careintelligence.homecontrol",
+    "appId": "io.github.l0tus-program.homecontrol",
     "productName": "Home Control",
     "directories": {
       "output": "release"
