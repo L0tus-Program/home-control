@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { TUYA_REGIONS, type TuyaSharingSession } from '../../../shared/tuya'
 import { DriverError } from '../types'
-import type { TuyaApiDevice, TuyaCommand, TuyaFunction, TuyaStatusItem } from './cloud'
+import type { TuyaApiDevice, TuyaCommand, TuyaFunction, TuyaLocalInfo, TuyaStatusItem } from './cloud'
 
 /** Protocolo documentado pelo tuya-device-sharing-sdk (Tuya Inc., licença MIT).
  * Referência: https://github.com/tuya/tuya-device-sharing-sdk/blob/0.2.15/tuya_sharing/customerapi.py
@@ -80,12 +80,44 @@ function devicesFrom(value: unknown): TuyaApiDevice[] {
       throw new DriverError('Estado inválido retornado pela Tuya.')
     }
     // Mantém somente os dados usados pelo app; respostas também podem conter chaves locais.
+    const local = item.support_local === true ? localStrategy(item.local_strategy) : undefined
     return {
       id: item.id, name: item.name, category: item.category, online: item.online,
       ...(typeof item.product_name === 'string' ? { product_name: item.product_name } : {}),
-      ...(Array.isArray(item.status) ? { status: item.status.map(({ code, value }) => ({ code, value })) } : {})
+      ...(Array.isArray(item.status) ? { status: item.status.map(({ code, value }) => ({ code, value })) } : {}),
+      ...(local ? { local } : {})
     }
   })
+}
+
+/**
+ * Aparelhos com controle local reportam no MQTT por `dpId`, não por código.
+ * Guardamos só a tradução dpId → código; o `local_key` nunca é lido.
+ */
+function localStrategy(value: unknown): TuyaLocalInfo | undefined {
+  if (!record(value)) return undefined
+  const dps: TuyaLocalInfo['dps'] = {}
+  for (const [dpId, entry] of Object.entries(value)) {
+    if (!/^\d{1,4}$/.test(dpId) || !record(entry) || !text(entry.status_code)) continue
+    const config = record(entry.config_item) ? entry.config_item : {}
+    dps[dpId] = {
+      code: entry.status_code,
+      ...(text(entry.value_convert) ? { convert: entry.value_convert } : {}),
+      ...(text(config.valueType) ? { valueType: config.valueType } : {})
+    }
+  }
+  return { dps }
+}
+
+export interface TuyaMqttConfig {
+  url: string
+  clientId: string
+  username: string
+  password: string
+  /** Segundos até as credenciais vencerem. */
+  expireTime: number
+  ownerTopic: string
+  deviceTopic: string
 }
 
 /** Compartilhamento oficial autorizado no aplicativo Tuya Smart / Smart Life. */
@@ -178,23 +210,45 @@ export class TuyaSharing {
     }
   }
 
-  async listDevices(): Promise<TuyaApiDevice[]> {
+  /** Casas da conta, pelo `ownerId` — o mesmo identificador dos tópicos MQTT. */
+  async listHomeIds(): Promise<string[]> {
     const homes = await this.request('GET', '/v1.0/m/life/users/homes')
     if (!Array.isArray(homes)) throw new DriverError('Lista de casas inválida retornada pela Tuya.')
-    const devices = new Map<string, TuyaApiDevice>()
     const homeIds = new Set<string>()
     for (const home of homes) {
       if (!record(home) || !(text(home.ownerId) || (typeof home.ownerId === 'number' && Number.isSafeInteger(home.ownerId)))) {
         throw new DriverError('A Tuya retornou uma casa inválida. Tente novamente.')
       }
-      const id = String(home.ownerId)
-      if (homeIds.has(id)) continue
-      homeIds.add(id)
+      homeIds.add(String(home.ownerId))
+    }
+    return [...homeIds]
+  }
+
+  async listDevices(): Promise<TuyaApiDevice[]> {
+    const devices = new Map<string, TuyaApiDevice>()
+    for (const id of await this.listHomeIds()) {
       for (const device of devicesFrom(await this.request('GET', '/v1.0/m/life/ha/home/devices', { homeId: id }))) {
         devices.set(device.id, device)
       }
     }
     return [...devices.values()]
+  }
+
+  /** Credenciais do MQTT oficial; vencem em `expireTime` segundos. */
+  async getMqttConfig(): Promise<TuyaMqttConfig> {
+    const result = await this.request('POST', '/v1.0/m/life/ha/access/config', undefined, { linkId: `home-control.${randomUUID()}` })
+    const topic = record(result) && record(result.topic) ? result.topic : {}
+    const ownerTopic = record(topic.ownerId) ? topic.ownerId.sub : undefined
+    const deviceTopic = record(topic.devId) ? topic.devId.sub : undefined
+    if (!record(result) || !text(result.url) || !text(result.clientId) || !text(result.username) || !text(result.password) ||
+        typeof result.expireTime !== 'number' || !Number.isFinite(result.expireTime) || result.expireTime <= 60 ||
+        !text(ownerTopic) || !ownerTopic.includes('{ownerId}') || !text(deviceTopic) || !deviceTopic.includes('{devId}')) {
+      throw new DriverError('A Tuya não liberou a atualização em tempo real.')
+    }
+    return {
+      url: result.url, clientId: result.clientId, username: result.username, password: result.password,
+      expireTime: result.expireTime, ownerTopic, deviceTopic
+    }
   }
 
   async getDevice(deviceId: string): Promise<TuyaApiDevice> {

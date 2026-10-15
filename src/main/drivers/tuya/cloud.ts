@@ -155,9 +155,12 @@ export interface TuyaApiDevice {
   product_name?: string
   online: boolean
   status?: TuyaStatusItem[]
+  /** Só em aparelhos com controle local: tradução dos dpIds do MQTT para códigos. */
+  local?: TuyaLocalInfo
 }
 
 export interface TuyaStatusItem { code: string; value: unknown }
+export interface TuyaLocalInfo { dps: Record<string, { code: string; convert?: string; valueType?: string }> }
 export interface TuyaFunction { code: string; type: string; values: string }
 export interface TuyaCommand { code: string; value: unknown }
 

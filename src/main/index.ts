@@ -55,8 +55,21 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-// Uma instancia so: abrir de novo traz a janela existente para frente.
-if (!app.requestSingleInstanceLock()) {
+const captureMode = isDev && process.env.HOME_CONTROL_REALTIME_CAPTURE === '1'
+
+if (captureMode) {
+  // Diagnostico do tempo real: sem janela, grava e encerra.
+  void app.whenReady().then(async () => {
+    const { runRealtimeCapture } = await import('./realtime/capture')
+    const seconds = Number(process.env.HOME_CONTROL_REALTIME_CAPTURE_SECONDS) || 60
+    await runRealtimeCapture(join(app.getPath('userData'), 'realtime-capture.jsonl'), {
+      durationMs: seconds * 1000,
+      probe: process.env.HOME_CONTROL_REALTIME_PROBE === '1'
+    }).catch((cause) => console.error(cause))
+    app.quit()
+  })
+} else if (!app.requestSingleInstanceLock()) {
+  // Uma instancia so: abrir de novo traz a janela existente para frente.
   app.quit()
 } else {
   app.on('second-instance', () => {

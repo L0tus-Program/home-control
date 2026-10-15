@@ -133,6 +133,15 @@ Modo de diagnóstico só em desenvolvimento (variável de ambiente), que conecta
 - Se as lâmpadas mandam `code` ou `dpId` e, no caso de `dpId`, quais `value_convert` aparecem e em que formato chega `colour_data_v2` (JSON `{h,s,v}` ou texto hexadecimal).
 - Host e porta reais do MQTT Tuya.
 
+**Resultado da captura (15/10/2026)**, com `HOME_CONTROL_REALTIME_CAPTURE=1` (`src/main/realtime/capture.ts`):
+
+- LG funcionou de ponta a ponta: `POST client` → `GET route` → CSR → `POST client/certificate` → conexão mTLS aceita.
+- `route` devolve `mqttServer: mqtts://<id>-ats.iot.us-west-2.amazonaws.com:8883` (e um `webSocketServer` wss:443, não usado). O sufixo `.amazonaws.com` se confirma.
+- O certificado vem **dentro de `result`**: `{resultCode, result: {certificatePem, subscriptions, publications}}`. `subscriptions` traz **dois** tópicos: `app/clients/<clientId>/push` e `app/clients/<clientId>/inbox`; assinamos os dois.
+- `event/{id}/subscribe` e `push/devices` responderam sem erro.
+- O ar estava desligado, então a sonda não mexeu nele e nenhuma mensagem de estado chegou. O formato do `report` segue o do SDK (estado parcial) e será conferido no aparelho real; enquanto isso, o código cai numa releitura REST se não conseguir aplicar.
+- **A Tuya não está conectada nesta máquina** (só há token LG no `config.json`). O MQTT Tuya é implementado conforme o SDK; a verificação real fica para quando a conta for conectada pelo QR Code.
+
 As capturas viram fixtures dos testes. Se `dpId` vier com conversões que não dominarmos, a saída é tratar a mensagem como **aviso** e reler só aquele aparelho por REST, com limite de frequência.
 
 ### Etapa 1: encanamento comum

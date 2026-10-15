@@ -16,6 +16,26 @@ import { TuyaSharing } from './tuya/sharing'
 import type { Driver } from './types'
 import { DriverError } from './types'
 
+export function thinqClientFromStore(): ThinqClient | null {
+  const token = getToken()
+  return token ? new ThinqClient({ token, country: getCountry(), clientId: getClientId() }) : null
+}
+
+/** A sessão QR renova o refresh token; cada renovação precisa voltar ao cofre. */
+export function tuyaSharingFromStore(): TuyaSharing | null {
+  const session = getTuyaSession()
+  if (!session) return null
+  let expectedRefresh = session.token.refreshToken
+  return new TuyaSharing(session, (next) => {
+    const current = getTuyaSession()
+    if (current?.terminalId !== session.terminalId || current?.token.refreshToken !== expectedRefresh) {
+      throw new DriverError('A conexão Tuya mudou. Atualize a tela para continuar.')
+    }
+    setTuyaSession(next)
+    expectedRefresh = next.token.refreshToken
+  })
+}
+
 /**
  * Monta os drivers a partir da configuracao atual.
  *
@@ -23,31 +43,18 @@ import { DriverError } from './types'
  * mais no app precisa saber que ela existe.
  */
 function buildDrivers(): Driver[] {
-  const token = getToken()
-  const thinq = new ThinqDriver(
-    token ? new ThinqClient({ token, country: getCountry(), clientId: getClientId() }) : null
-  )
+  const thinq = new ThinqDriver(thinqClientFromStore())
 
   const creds = getTuyaCredentials()
-  const session = getTuyaSession()
-  let expectedRefresh = session?.token.refreshToken
   const tuya = new TuyaDriver(
-    session
-      ? new TuyaSharing(session, (next) => {
-          const current = getTuyaSession()
-          if (current?.terminalId !== session.terminalId || current?.token.refreshToken !== expectedRefresh) {
-            throw new DriverError('A conexão Tuya mudou. Atualize a tela para continuar.')
-          }
-          setTuyaSession(next)
-          expectedRefresh = next.token.refreshToken
-        })
-      : creds
-      ? new TuyaCloud({
-          accessId: creds.accessId,
-          accessSecret: creds.accessSecret,
-          region: getTuyaRegion()
-        })
-      : null
+    tuyaSharingFromStore() ??
+      (creds
+        ? new TuyaCloud({
+            accessId: creds.accessId,
+            accessSecret: creds.accessSecret,
+            region: getTuyaRegion()
+          })
+        : null)
   )
 
   return [thinq, tuya]
