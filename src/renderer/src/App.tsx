@@ -129,7 +129,7 @@ export function App(): React.JSX.Element {
       {notices.length > 0 && (
         <div className="notices" role="status" aria-live="polite">
           {notices.map((notice) => (
-            <div key={notice.id} className="alert notice">
+            <div key={notice.id} className="notice">
               <span><strong>{notice.title}</strong> · {notice.message}</span>
               <button type="button" aria-label="Dispensar aviso" onClick={() => dismissNotice(notice.id)}>✕</button>
             </div>

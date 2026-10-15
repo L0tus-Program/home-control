@@ -44,7 +44,39 @@ test('aviso DEVICE_PUSH vira notice com o nome do aparelho; assina push por apar
   assert.ok(api.calls.includes('push:ar'))
   broker.last().deliver('t', { pushType: 'DEVICE_PUSH', deviceId: 'ar', pushCode: 'WATER_IS_FULL' })
   assert.deepEqual(out.events.at(-1), { type: 'notice', deviceId: 'ar', title: 'Ar do quarto', message: 'O reservatório de água está cheio.' })
-  assert.equal(pushMessage('SOMETHING_NEW'), 'Aviso do aparelho: something new.')
+  assert.equal(pushMessage('SOMETHING_NEW'), 'O aparelho enviou um aviso (SOMETHING_NEW).')
+
+  const count = () => out.events.filter((e) => e.type === 'notice').length
+  // Mesmo aviso logo depois: nao repete. Reentrega (DUP) e aviso velho: descartados.
+  broker.last().deliver('t', { pushType: 'DEVICE_PUSH', deviceId: 'ar', pushCode: 'WATER_IS_FULL' })
+  broker.last().deliver('t', { pushType: 'DEVICE_PUSH', deviceId: 'ar', pushCode: 'OTHER' }, { dup: true })
+  broker.last().deliver('t', { pushType: 'DEVICE_PUSH', deviceId: 'ar', pushCode: 'OLD', timestamp: new Date(Date.now() - 3600_000).toISOString() })
+  assert.equal(count(), 1)
+  // Codigo fora do padrao nao vai cru para a tela.
+  broker.last().deliver('t', { pushType: 'DEVICE_PUSH', deviceId: 'ar', pushCode: 'x'.repeat(500) })
+  assert.equal(out.events.at(-1).message, 'O aparelho enviou um aviso.')
+})
+
+test('modelo sem avisos no perfil nao assina push; falha do push nao deixa pendencia', async (t) => {
+  const quiet = client({ operation: { airConOperationMode: 'POWER_ON' } })
+  quiet.getProfile = async () => ({ property: profile.property })
+  const listener = { event: () => {}, status: () => {} }
+  const stored = { clientId: 'c', privateKeyPem: 'K', certificatePem: 'C', subscriptions: ['t'] }
+  const broker = fakeBroker()
+  const statuses = []
+  const handle = await new ThinqDriver(quiet, { loadCredentials: () => stored, connect: broker.connect }).watch({ ...listener, status: (s) => statuses.push(s) })
+  t.after(() => handle.stop())
+  await until(() => statuses.includes('live'))
+  assert.equal(quiet.calls.some((c) => c.startsWith('push:')), false)
+
+  const failing = client({ operation: { airConOperationMode: 'POWER_ON' } })
+  failing.subscribePush = async () => { throw Object.assign(new Error('recurso inexistente'), { code: '1220' }) }
+  const broker2 = fakeBroker()
+  const statuses2 = []
+  const handle2 = await new ThinqDriver(failing, { loadCredentials: () => stored, connect: broker2.connect }).watch({ ...listener, status: (s) => statuses2.push(s) })
+  t.after(() => handle2.stop())
+  await until(() => statuses2.includes('live'))
+  assert.equal(broker2.clients.length, 1)
 })
 
 test('hub entrega avisos distintos e junta repetidos; renderer nao mexe nos aparelhos', async () => {

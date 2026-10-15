@@ -20,8 +20,9 @@ function publicEvent(event: DeviceEvent): DeviceEvent {
   return event.type === 'state' ? { type: 'state', device: publicDevice(event.device) } : event
 }
 
-/** Aviso do aparelho tambem vira notificacao do sistema: pode chegar com a janela minimizada. */
+/** Com a janela fora de foco, o aviso tambem vira notificacao do sistema; em foco, basta o do app. */
 function notify(batch: DeviceEventBatch): void {
+  if (BrowserWindow.getFocusedWindow()) return
   for (const event of batch.events) {
     if (event.type !== 'notice') continue
     try {

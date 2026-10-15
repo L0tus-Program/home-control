@@ -27,7 +27,7 @@ Conferido no código dos SDKs oficiais (`thinqconnect`, Apache-2.0, e `tuya-devi
 3. O app gera uma chave RSA 2048 e um CSR com `CN=lg_thinq`. `POST client/certificate` com `{"service-code":"SVC202","csr":"<PEM sem cabeçalho e rodapé>"}` devolve `certificatePem` e `subscriptions[0]`, que é o tópico a assinar.
 4. Conexão MQTT com TLS mútuo (chave + certificado), `clientId` igual ao `x-client-id`, QoS 1, sessão persistente. A CA é a Amazon Root CA 1, que já vem na lista de raízes do Node; não precisa baixar nem empacotar.
 5. Por aparelho, `POST event/{deviceId}/subscribe` (expira em 4464 h; o Home Assistant renova uma vez por dia). `POST push/devices` assina as entradas e saídas de aparelhos na conta.
-6. As mensagens são JSON com `deviceId`, `deviceType`, `pushType` e `report`. `pushType: "DEVICE_STATUS"` traz em `report` um **estado parcial no mesmo formato do `GET state`** (por exemplo, só `{"airConJobMode": {...}}`). `"DEVICE_PUSH"` traz `pushCode` (avisos como filtro; fica para depois).
+6. As mensagens são JSON com `deviceId`, `deviceType`, `pushType` e `report`. `pushType: "DEVICE_STATUS"` traz em `report` um **estado parcial no mesmo formato do `GET state`** (por exemplo, só `{"airConJobMode": {...}}`). `"DEVICE_PUSH"` traz `pushCode` (avisos do aparelho; viram aviso no app e notificação do sistema, ver #12).
 
 ### Tuya (conexão por QR Code): MQTT com usuário e senha
 
@@ -173,7 +173,7 @@ Feito: com canal ao vivo, o comando é confirmado pelo primeiro evento do aparel
 
 - Com tempo real ativo, o `executeCommand` deixa de esperar 900 ms fixos e passa a confirmar pelo evento, com `getDevice` só se nada chegar em ~3 s.
 - O `getDevice` da LG deixa de chamar `listDevices` inteiro (usa o cache de aparelhos).
-- `DEVICE_PUSH` (avisos, como troca de filtro) fica disponível para notificações futuras.
+- `DEVICE_PUSH` virou aviso no app e notificação do sistema (#12), sem reentregas da sessão persistente nem repetição.
 
 ## Verificação
 
@@ -184,5 +184,4 @@ Feito: com canal ao vivo, o comando é confirmado pelo primeiro evento do aparel
 ## Fora deste plano
 
 - Tempo real no modo Tuya por projeto cloud (Pulsar).
-- Notificações do sistema operacional a partir de `DEVICE_PUSH`.
 - Manter a conexão com a janela fechada (bandeja), que continua sendo decisão da Etapa 3 do plano da casa.

@@ -221,6 +221,7 @@ export function useDevices(enabled: boolean, revision = 0): DevicesApi {
       stopEvents()
       stopStatus()
       for (const timer of timers.values()) clearTimeout(timer)
+      setNotices([])
     }
   }, [enabled, refresh, dismissNotice])
 
