@@ -3,7 +3,7 @@ import type { Capability, Command, Device } from '../../../shared/types'
 import { secureBrokerUrl, TUYA_BROKER_DOMAINS } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
-import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, isControllableBulb, powerCommand, readState } from './bulb'
+import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, colorTemperatureCommands, isControllableBulb, powerCommand, readState } from './bulb'
 import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
 import { mergeStatus, parseTuyaMessage, resolveReport } from './realtime'
 import type { TuyaMqttConfig } from './sharing'
@@ -124,6 +124,7 @@ export class TuyaDriver implements Driver {
     const capabilities: Capability[] = [{ kind: 'power' }]
     if (caps.brightness) capabilities.push({ kind: 'brightness', min: 1, max: 100 })
     if (caps.color) capabilities.push({ kind: 'color' })
+    if (caps.colorTemperature) capabilities.push({ kind: 'colorTemperature' })
     if (modes.length > 1) capabilities.push({ kind: 'mode', options: modes })
     return {
       id: info.id, driverId: this.id, name: info.name?.trim() || 'Lâmpada Tuya',
@@ -148,6 +149,11 @@ export class TuyaDriver implements Driver {
       case 'color': {
         const status = await cloud.getStatus(deviceId)
         await cloud.sendCommands(deviceId, colorCommands(status, command.value, functions))
+        return
+      }
+      case 'colorTemperature': {
+        const status = await cloud.getStatus(deviceId)
+        await cloud.sendCommands(deviceId, colorTemperatureCommands(status, command.value, functions))
         return
       }
       case 'mode': {

@@ -55,6 +55,7 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
   const fans = capability(device, 'fan')
   const brightness = capability(device, 'brightness')
   const hasColor = capability(device, 'color') !== undefined
+  const hasColorTemperature = capability(device, 'colorTemperature') !== undefined
   const controllable = device.capabilities.length > 0
   const disabled = offline || busy
 
@@ -107,9 +108,10 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
             currentTemperature={state.currentTemperature} onChange={(value) => onCommand({ type: 'temperature', value })} />
         )}
 
-        {(brightness || hasColor) && (
+        {(brightness || hasColor || hasColorTemperature) && (
           <LightControls brightness={brightness} hasColor={hasColor}
-            value={{ brightness: state.brightness, color: state.color }} disabled={disabled || !state.power}
+          hasColorTemperature={hasColorTemperature}
+            value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature, mode: state.mode }} disabled={disabled || !state.power}
             onCommand={onCommand} />
         )}
 

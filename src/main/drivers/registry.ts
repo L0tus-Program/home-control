@@ -143,6 +143,8 @@ export function confirmsCommand(command: Command): (device: Device) => boolean {
     case 'fan': return (device) => device.state.fan === command.value
     case 'brightness': return (device) => near(device.state.brightness, command.value, 1)
     case 'color': return (device) => near(device.state.color?.hue, command.value.hue, 2) && near(device.state.color?.saturation, command.value.saturation, 2)
+    // O tom guardado tambem aparece em modo cor: so confirma quando a lampada ja esta no branco.
+    case 'colorTemperature': return (device) => near(device.state.colorTemperature, command.value, 1) && (device.state.mode === undefined || device.state.mode === 'white')
   }
 }
 

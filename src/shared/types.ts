@@ -15,6 +15,8 @@ export type Capability =
   | { kind: 'fan'; options: string[] }
   | { kind: 'brightness'; min: number; max: number }
   | { kind: 'color' }
+  /** Tom do branco: 0 e o mais quente, 100 o mais frio. */
+  | { kind: 'colorTemperature' }
 
 export type CapabilityKind = Capability['kind']
 
@@ -35,6 +37,8 @@ export interface DeviceState {
   fan?: string
   brightness?: number
   color?: ColorState
+  /** Tom do branco, 0 (quente) a 100 (frio). */
+  colorTemperature?: number
   humidity?: number
 }
 
@@ -56,6 +60,7 @@ export type Command =
   | { type: 'fan'; value: string }
   | { type: 'brightness'; value: number }
   | { type: 'color'; value: ColorState }
+  | { type: 'colorTemperature'; value: number }
 
 export interface DriverStatus {
   id: string

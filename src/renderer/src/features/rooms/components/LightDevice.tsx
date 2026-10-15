@@ -3,6 +3,7 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import type { Device } from '../../../../../shared/types'
+import { whiteTone } from '../../../lightTone'
 import { useCanvasTexture, useHoverCursor } from '../hooks'
 
 interface LightDeviceProps {
@@ -43,7 +44,9 @@ export function LightDevice({ device, isSelected, onClick }: LightDeviceProps) {
 
   const isOn = device.state.power
   const brightness = device.state.brightness ?? 100
-  const color = device.state.color ? hslToHex(device.state.color.hue, device.state.color.saturation) : '#ffca7a'
+  // Em modo branco, a luz da maquete segue o tom; sem tom, o branco quente de sempre.
+  const tone = device.state.colorTemperature
+  const color = device.state.color ? hslToHex(device.state.color.hue, device.state.color.saturation) : tone === undefined ? '#ffca7a' : whiteTone(tone)
   const haloSize = 2.6 * (brightness / 100 + 0.4)
 
   useFrame(({ clock }) => {

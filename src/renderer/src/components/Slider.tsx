@@ -12,6 +12,8 @@ interface Props {
   /** Cor do punho, para ele combinar com o ponto escolhido. */
   knobColor?: string
   format?: (value: number) => string
+  /** Dispara mesmo soltando no valor atual (reaplicar, como voltar ao branco). */
+  commitUnchanged?: boolean
   onChange: (value: number) => void
 }
 
@@ -29,6 +31,7 @@ export function Slider({
   trackBackground,
   knobColor = '#fff',
   format,
+  commitUnchanged = false,
   onChange
 }: Props): React.JSX.Element {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -65,7 +68,7 @@ export function Slider({
     event.currentTarget.releasePointerCapture(event.pointerId)
     const next = draft
     setDraft(null)
-    if (next !== value) onChange(next)
+    if (next !== value || commitUnchanged) onChange(next)
   }
 
   const handleKey = (event: React.KeyboardEvent<HTMLDivElement>): void => {
