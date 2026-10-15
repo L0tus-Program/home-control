@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DriverStatus, RealtimeStatus, Result } from '../shared/types'
-import { executeCommand, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
+import type { AppSettings, Command, Device, DriverStatus, EnergyReport, RealtimeStatus, Result } from '../shared/types'
+import { executeCommand, getEnergy, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
 import { realtimeSettled, realtimeStatuses, waitForDeviceState } from './realtime/service'
 import { publicDevice } from '../shared/devices'
@@ -129,6 +129,15 @@ export function registerIpc(): void {
       input: { driverId: string; deviceId: string; command: Command }
     ): Promise<Result<Device>> =>
       guard(async () => publicDevice(await executeCommand(input.driverId, input.deviceId, input.command, waitForDeviceState)))
+  )
+
+  ipcMain.handle(
+    'devices:energy',
+    (_event, input: { driverId?: unknown; deviceId?: unknown }): Promise<Result<EnergyReport>> =>
+      guard(() => {
+        if (typeof input?.driverId !== 'string' || typeof input?.deviceId !== 'string') throw new Error('Aparelho invalido.')
+        return getEnergy(input.driverId, input.deviceId)
+      })
   )
 
   ipcMain.handle('realtime:status', (): Promise<Result<Record<string, RealtimeStatus>>> => guard(realtimeStatuses))

@@ -1,4 +1,4 @@
-import type { Command, Device, DeviceEvent, RealtimeState } from '../../shared/types'
+import type { Command, Device, DeviceEvent, EnergyReport, RealtimeState } from '../../shared/types'
 
 /**
  * Contrato de uma integracao.
@@ -27,6 +27,9 @@ export interface Driver {
    * reporta pelo `status` e tenta de novo sozinho.
    */
   watch?(listener: RealtimeListener): Promise<RealtimeHandle>
+
+  /** Consumo de energia, para aparelhos com a capability `energy`. */
+  getEnergy?(deviceId: string): Promise<EnergyReport>
 }
 
 export interface RealtimeListener {

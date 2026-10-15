@@ -135,6 +135,17 @@ export class ThinqClient {
     })
   }
 
+  /** Propriedades de energia que o aparelho informa (ex.: `energyUsage`). */
+  getEnergyProfile(deviceId: string): Promise<Record<string, unknown>> {
+    return this.request('GET', `devices/energy/${encodeURIComponent(deviceId)}/profile`)
+  }
+
+  /** `period` DAILY usa datas AAAAMMDD; MONTHLY, AAAAMM (como o SDK `thinqconnect`). */
+  getEnergyUsage(deviceId: string, property: string, period: 'DAILY' | 'MONTHLY', start: string, end: string): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams({ property, period, startDate: start, endDate: end })
+    return this.request('GET', `devices/energy/${encodeURIComponent(deviceId)}/usage?${query}`)
+  }
+
   // ── Tempo real (MQTT) ─────────────────────────────────────────────────────
 
   /** Registra o x-client-id como cliente MQTT. `allowExist` deixa repetir sem erro. */
