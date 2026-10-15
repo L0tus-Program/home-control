@@ -44,6 +44,7 @@ async function fixture(t) {
     './drivers/registry': `
       const fixture = globalThis.__tuyaIpcFixture
       export const invalidateDrivers = () => { fixture.invalidations++ }
+      export const thinqClientFromStore = () => null
       export const listAllDevices = async (driverId) => {
         fixture.listCalls.push(driverId)
         return { devices: [], statuses: [] }

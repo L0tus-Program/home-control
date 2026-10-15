@@ -26,3 +26,13 @@ export function fakeBroker({ autoConnect = true, refuse = false } = {}) {
 }
 
 export const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Espera uma condicao (geracao de chave RSA leva tempo variavel). */
+export async function until(check, ms = 5000) {
+  const deadline = Date.now() + ms
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('condicao nao aconteceu a tempo')
+    await tick(10)
+  }
+  await tick(10)
+}

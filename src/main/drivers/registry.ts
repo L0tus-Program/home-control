@@ -2,10 +2,12 @@ import type { Command, Device, DriverStatus } from '../../shared/types'
 import {
   getClientId,
   getCountry,
+  getThinqMqttCredentials,
   getToken,
   getTuyaCredentials,
   getTuyaRegion,
   getTuyaSession,
+  setThinqMqttCredentials,
   setTuyaSession
 } from '../store'
 import { ThinqClient } from './thinq/client'
@@ -43,7 +45,10 @@ export function tuyaSharingFromStore(): TuyaSharing | null {
  * mais no app precisa saber que ela existe.
  */
 function buildDrivers(): Driver[] {
-  const thinq = new ThinqDriver(thinqClientFromStore())
+  const thinq = new ThinqDriver(thinqClientFromStore(), {
+    loadCredentials: getThinqMqttCredentials,
+    saveCredentials: setThinqMqttCredentials
+  })
 
   const creds = getTuyaCredentials()
   const tuya = new TuyaDriver(

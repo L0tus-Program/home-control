@@ -11,7 +11,8 @@ export interface LinkTarget {
 }
 
 export interface LinkOptions {
-  prepare(): Promise<LinkTarget>
+  /** `lastError`: por que a tentativa anterior falhou, se falhou. */
+  prepare(lastError?: unknown): Promise<LinkTarget>
   message(topic: string, payload: Buffer): void
   status(state: RealtimeState, error?: string): void
   /** Toda conexao depois da primeira pode ter perdido eventos. */
@@ -45,6 +46,7 @@ export class MqttLink {
   private failures = 0
   private connectedOnce = false
   private attempt = 0
+  private lastError: unknown = undefined
 
   constructor(private readonly options: LinkOptions) {}
 
@@ -87,8 +89,14 @@ export class MqttLink {
     this.timer = setTimeout(() => { this.timer = null; void this.open() }, delay)
   }
 
+  /** Nunca ficou ao vivo nesta sessao: falha de credencial e provavel. */
+  connectedNever(): boolean {
+    return !this.connectedOnce
+  }
+
   private fail(cause: unknown): void {
     if (this.stopped) return
+    this.lastError = cause
     this.close()
     if (this.options.isFatal?.(cause)) {
       this.options.status('unavailable', message(cause))
@@ -108,7 +116,7 @@ export class MqttLink {
     this.options.status('connecting')
     let target: LinkTarget
     try {
-      target = await this.options.prepare()
+      target = await this.options.prepare(this.lastError)
     } catch (cause) {
       if (attempt === this.attempt) this.fail(cause)
       return
@@ -141,6 +149,7 @@ export class MqttLink {
           return
         }
         this.failures = 0
+        this.lastError = undefined
         this.options.status('live')
         if (this.connectedOnce) this.options.reconnected()
         this.connectedOnce = true

@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { HomeLayout } from '../shared/home'
 import type { AppSettings, Command, Device, DriverStatus, RealtimeStatus, Result } from '../shared/types'
-import { executeCommand, invalidateDrivers, listAllDevices } from './drivers/registry'
+import { executeCommand, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
 import { realtimeStatuses } from './realtime/service'
 import { TuyaCloud } from './drivers/tuya/cloud'
@@ -63,7 +63,12 @@ export function registerIpc(): void {
   ipcMain.handle(
     'settings:save-thinq',
     (_event, input: { token?: string; country?: string }): Promise<Result<AppSettings>> =>
-      guard(() => {
+      guard(async () => {
+        if (input.token === '') {
+          // Cortesia com a LG: desfaz o registro do cliente MQTT enquanto ainda ha token.
+          const client = thinqClientFromStore()
+          await Promise.race([client?.unregisterClient().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 3000))])
+        }
         if (typeof input.country === 'string' && input.country.trim()) {
           setCountry(input.country)
         }

@@ -182,8 +182,11 @@ const MQTT_SERVICE_CODE = 'SVC202'
 const MQTT_CLIENT_BODY = { type: 'MQTT', 'service-code': MQTT_SERVICE_CODE, 'device-type': '607', allowExist: true }
 const EVENT_SUBSCRIPTION_HOURS = 4464
 
-/** Assinatura que ja existia: para nos, sucesso. */
-export const ALREADY_SUBSCRIBED = '1207'
+/**
+ * Assinatura que ja existia: para nos, sucesso. O SDK documenta 1207; a nuvem
+ * real (conta BR, 10/2026) responde 4001 "Already Subscribed Home Push".
+ */
+export const ALREADY_SUBSCRIBED = new Set(['1207', '4001'])
 
 /** Traduz os codigos de erro mais comuns da LG para algo acionavel. */
 function describeError(code: string | undefined, fallback: string): string {

@@ -11,6 +11,8 @@ test('selecionar Tuya não consulta LG mesmo com ambas as credenciais salvas', a
       export const getTuyaCredentials = () => ({ accessId: 'id', accessSecret: 'secret' })
       export const getTuyaRegion = () => 'us'
       export const getTuyaSession = () => null
+      export const getThinqMqttCredentials = () => null
+      export const setThinqMqttCredentials = () => {}
       export const setTuyaSession = () => { throw new Error('teste Cloud não deve gravar sessão QR') }
     `
   })

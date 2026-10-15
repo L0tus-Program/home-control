@@ -28,8 +28,15 @@ function publicEvent(event: DeviceEvent): DeviceEvent {
 export function startRealtime(): void {
   if (hub) return
   const current = new RealtimeHub({
-    events: (batch): void => broadcast('devices:events', { driverId: batch.driverId, events: batch.events.map(publicEvent) } satisfies DeviceEventBatch),
-    status: (statuses) => broadcast('realtime:status', statuses)
+    events: (batch): void => {
+      if (process.env.HOME_CONTROL_REALTIME_DEBUG === '1') console.log('[tempo real]', batch.driverId, batch.events.map((event) => event.type).join(','))
+      broadcast('devices:events', { driverId: batch.driverId, events: batch.events.map(publicEvent) } satisfies DeviceEventBatch)
+    },
+    status: (statuses) => {
+      // Diagnostico de desenvolvimento: so estado e mensagem de erro, nunca payload.
+      if (process.env.HOME_CONTROL_REALTIME_DEBUG === '1') console.log('[tempo real]', JSON.stringify(statuses))
+      broadcast('realtime:status', statuses)
+    }
   })
   hub = current
   // Token novo, conta Tuya reconectada ou desconectada: troca o canal junto.
