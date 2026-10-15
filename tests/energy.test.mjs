@@ -64,12 +64,11 @@ test('datas na virada do ano e falha passageira no perfil e no mes', async (t) =
   }
   const driver = new ThinqDriver(api)
   const [first] = await driver.listDevices()
-  assert.equal(first.capabilities.some((cap) => cap.kind === 'energy'), false, 'falha passageira nao vira capability')
+  assert.equal(first.capabilities.some((cap) => cap.kind === 'energy'), true, 'falha passageira ainda mostra o painel')
+  await assert.rejects(driver.getEnergy('ar'), /cota/, 'o painel mostra o motivo')
   profileFails = false
-  // Antes do intervalo de nova tentativa, continua sem saber; depois, descobre.
-  t.mock.timers.setTime(new Date(2027, 0, 1, 9, 11).getTime())
-  const [second] = await driver.listDevices()
-  assert.equal(second.capabilities.some((cap) => cap.kind === 'energy'), true)
+  // Abrir o painel de novo tenta o perfil na hora, sem esperar o intervalo.
+  t.mock.timers.setTime(new Date(2027, 0, 1, 9, 3).getTime())
 
   const partial = await driver.getEnergy('ar')
   assert.equal(partial.thisMonthWh, undefined)

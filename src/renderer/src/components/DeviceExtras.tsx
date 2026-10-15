@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Capability, Command, Device, OptionKey, TimerAction } from '../../../shared/types'
 import { optionLabel } from '../labels'
 
@@ -15,6 +16,21 @@ export function durationLabel(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
+}
+
+/** Prazo livre, em minutos, alem dos atalhos. */
+function CustomTimer({ max, disabled, onSet }: { max: number; disabled: boolean; onSet: (minutes: number) => void }): React.JSX.Element {
+  const [value, setValue] = useState('')
+  const minutes = Number(value)
+  const valid = Number.isInteger(minutes) && minutes >= 1 && minutes <= max
+  return (
+    <form className="timer__custom" onSubmit={(event) => { event.preventDefault(); if (valid) { onSet(minutes); setValue('') } }}>
+      <input type="number" inputMode="numeric" min={1} max={max} step={1} placeholder="Outro prazo" aria-label="Prazo em minutos"
+        value={value} disabled={disabled} onChange={(event) => setValue(event.target.value)} />
+      <span>min</span>
+      <button type="submit" disabled={disabled || !valid}>Programar</button>
+    </form>
+  )
 }
 
 function TimerControl({ device, timer, disabled, onCommand }: Props & { timer: Extract<Capability, { kind: 'timer' }> }): React.JSX.Element | null {
@@ -48,6 +64,7 @@ function TimerControl({ device, timer, disabled, onCommand }: Props & { timer: E
           ))}
         </div>
       )}
+      {offer && <CustomTimer max={timer.maxMinutes} disabled={disabled} onSet={(minutes) => onCommand({ type: 'timer', action, minutes })} />}
     </div>
   )
 }

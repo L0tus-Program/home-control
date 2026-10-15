@@ -63,7 +63,19 @@ export function ScenesPanel({ driverId, reload }: { driverId: string; reload: nu
       </section>
     )
   }
-  if (!scenes || scenes.length === 0) return null
+  if (!scenes) return null
+  if (scenes.length === 0) {
+    // A lista vazia vem da propria Tuya: dizer isso evita parecer que o painel quebrou.
+    return (
+      <section className="scenes" aria-label="Cenas">
+        <h2 className="scenes__title">Cenas do Smart Life</h2>
+        <p className="card__meta">
+          A Tuya não liberou nenhuma cena “Toque para executar” para esta conexão. Automações e cenas de outras casas não aparecem aqui.{' '}
+          <button type="button" className="btn btn--ghost" onClick={() => setAttempt((n) => n + 1)}>Verificar de novo</button>
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section className="scenes" aria-label="Cenas">
