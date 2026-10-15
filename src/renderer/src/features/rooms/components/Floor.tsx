@@ -1,5 +1,5 @@
 import { useCanvasTexture } from '../hooks'
-import { BACK_WALL_Z, LEFT_WALL_X, ROOM } from '../layout'
+import { ROOM, wallsOf, type RoomDimensions } from '../layout'
 
 const WINDOW = { x: 2.2, y: 1.95, width: 2.6, height: 1.9, bar: 0.07 }
 const BASEBOARD = { height: 0.12, depth: 0.03 }
@@ -31,11 +31,11 @@ function drawPlaster(ctx: CanvasRenderingContext2D, size: number): void {
 }
 
 /** Janela rente a parede do fundo: vidro claro, moldura e peitoril. */
-function Window() {
+function Window({ backZ }: { backZ: number }) {
   const { width, height, bar } = WINDOW
   const frame = <meshStandardMaterial color="#ffffff" roughness={0.5} />
   return (
-    <group position={[WINDOW.x, WINDOW.y, BACK_WALL_Z]}>
+    <group position={[WINDOW.x, WINDOW.y, backZ]}>
       <mesh position={[0, 0, 0.01]}>
         <boxGeometry args={[width, height, 0.02]} />
         <meshStandardMaterial color="#bcd9f0" emissive="#6f97bd" emissiveIntensity={0.35} roughness={0.1} />
@@ -62,8 +62,10 @@ function Window() {
   )
 }
 
-export function Floor() {
-  const { width, depth, wallHeight, wallThickness: t } = ROOM
+export function Floor({ dimensions }: { dimensions: RoomDimensions }) {
+  const { width, depth } = dimensions
+  const { wallHeight, wallThickness: t } = ROOM
+  const { backZ, leftX } = wallsOf(dimensions)
   const woodTexture = useCanvasTexture(1024, drawWood, [width / 4.5, depth / 4.5])
   const backWallTexture = useCanvasTexture(512, drawPlaster, [width / 3, wallHeight / 3])
   const sideWallTexture = useCanvasTexture(512, drawPlaster, [depth / 3, wallHeight / 3])
@@ -75,27 +77,27 @@ export function Floor() {
         <meshStandardMaterial map={woodTexture} roughness={0.35} metalness={0.05} color="#e8dcc8" />
       </mesh>
 
-      {/* Paredes: a face interna fica exatamente em BACK_WALL_Z / LEFT_WALL_X */}
-      <mesh position={[-t / 2, wallHeight / 2, BACK_WALL_Z - t / 2]} receiveShadow castShadow>
+      {/* Paredes: a face interna fica exatamente em backZ / leftX */}
+      <mesh position={[-t / 2, wallHeight / 2, backZ - t / 2]} receiveShadow castShadow>
         <boxGeometry args={[width + t, wallHeight, t]} />
         <meshStandardMaterial map={backWallTexture} roughness={0.9} color="#f7f5f0" />
       </mesh>
-      <mesh position={[LEFT_WALL_X - t / 2, wallHeight / 2, 0]} receiveShadow castShadow>
+      <mesh position={[leftX - t / 2, wallHeight / 2, 0]} receiveShadow castShadow>
         <boxGeometry args={[t, wallHeight, depth]} />
         <meshStandardMaterial map={sideWallTexture} roughness={0.9} color="#f7f5f0" />
       </mesh>
 
       {/* Rodapes */}
-      <mesh position={[0, BASEBOARD.height / 2, BACK_WALL_Z + BASEBOARD.depth / 2]}>
+      <mesh position={[0, BASEBOARD.height / 2, backZ + BASEBOARD.depth / 2]}>
         <boxGeometry args={[width, BASEBOARD.height, BASEBOARD.depth]} />
         <meshStandardMaterial color="#8b7355" roughness={0.6} />
       </mesh>
-      <mesh position={[LEFT_WALL_X + BASEBOARD.depth / 2, BASEBOARD.height / 2, 0]}>
+      <mesh position={[leftX + BASEBOARD.depth / 2, BASEBOARD.height / 2, 0]}>
         <boxGeometry args={[BASEBOARD.depth, BASEBOARD.height, depth]} />
         <meshStandardMaterial color="#8b7355" roughness={0.6} />
       </mesh>
 
-      <Window />
+      <Window backZ={backZ} />
     </group>
   )
 }

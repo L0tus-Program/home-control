@@ -3,21 +3,23 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, ContactShadows, SoftShadows } from '@react-three/drei'
 import { deviceKey } from '../../../../../shared/devices'
+import { deviceRefKey, type DeviceAssetId, type FurnitureAssetId, type Room, type RoomItem } from '../../../../../shared/home'
 import type { Device } from '../../../../../shared/types'
-import { AC_MOUNTS, CAMERA_TARGET, LIGHT_SPOTS, ROOM, type Vec3 } from '../layout'
+import { cameraTarget, ROOM, type Vec3 } from '../layout'
 import { Floor } from './Floor'
-import { Furniture } from './Furniture'
+import { FURNITURE } from './Furniture'
 import { LightDevice } from './LightDevice'
 import { ACDevice } from './ACDevice'
 
 interface RoomSceneProps {
+  room: Room
   devices: Device[]
   selectedKey: string | null
   onSelect: (key: string) => void
 }
 
 /** Iluminacao ambiente com leve respiracao, para dar vida a cena. */
-function Atmosphere({ lightsOn }: { lightsOn: number }) {
+function Atmosphere({ lightsOn, target }: { lightsOn: number; target: Vec3 }) {
   const ambRef = useRef<THREE.AmbientLight>(null)
   useFrame(({ clock }) => {
     if (ambRef.current) {
@@ -40,26 +42,37 @@ function Atmosphere({ lightsOn }: { lightsOn: number }) {
         shadow-camera-bottom={-8}
       />
       {/* Brilho extra quando ha lampadas acesas */}
-      {lightsOn > 0 && <pointLight position={[CAMERA_TARGET[0], ROOM.wallHeight - 0.4, CAMERA_TARGET[2]]} intensity={lightsOn * 0.6} color="#ffd9a0" distance={14} decay={2} />}
+      {lightsOn > 0 && <pointLight position={[target[0], ROOM.wallHeight - 0.4, target[2]]} intensity={lightsOn * 0.6} color="#ffd9a0" distance={14} decay={2} />}
     </>
   )
 }
 
-/** Posicionamento fixo e curado: cada aparelho tem um lugar na sala. */
-function layoutFor(devices: Device[]): { device: Device; position: Vec3; rotationY: number }[] {
-  const lights = devices.filter((d) => d.kind === 'light')
-  const acs = devices.filter((d) => d.kind === 'air-conditioner')
-  return [
-    ...lights.map((device, i) => ({ device, position: LIGHT_SPOTS[i % LIGHT_SPOTS.length], rotationY: 0 })),
-    ...acs.map((device, i) => ({ device, ...AC_MOUNTS[i % AC_MOUNTS.length] }))
-  ]
+interface DeviceAssetProps {
+  device: Device
+  isSelected: boolean
+  onClick: () => void
 }
 
-function SceneContent({ devices, selectedKey, onSelect }: RoomSceneProps) {
+const DEVICE_ASSETS: Record<DeviceAssetId, (props: DeviceAssetProps) => React.JSX.Element> = {
+  'floor-lamp': LightDevice,
+  'wall-ac': ACDevice
+}
+
+/** Posicao, giro e escala do item; a peca e desenhada na origem. */
+function Placed({ item, children }: { item: RoomItem; children: React.ReactNode }) {
+  return (
+    <group position={item.position} rotation={[0, item.rotationY, 0]} scale={item.scale}>
+      {children}
+    </group>
+  )
+}
+
+function SceneContent({ room, devices, selectedKey, onSelect }: RoomSceneProps) {
   const groupRef = useRef<THREE.Group>(null)
   const [intro, setIntro] = useState(true)
+  const { width, depth } = room.dimensions
 
-  const placed = useMemo(() => layoutFor(devices), [devices])
+  const devicesByKey = useMemo(() => new Map(devices.map((device) => [deviceKey(device), device])), [devices])
 
   // Pequena animacao de entrada da camera/grupo
   useEffect(() => {
@@ -75,34 +88,30 @@ function SceneContent({ devices, selectedKey, onSelect }: RoomSceneProps) {
 
   return (
     <group ref={groupRef}>
-      <Floor />
-      <Furniture />
-      {placed.map(({ device, position, rotationY }) =>
-        device.kind === 'light' ? (
-          <LightDevice
-            key={deviceKey(device)}
-            device={device}
-            position={position}
-            isSelected={selectedKey === deviceKey(device)}
-            onClick={() => onSelect(deviceKey(device))}
-          />
-        ) : (
-          <ACDevice
-            key={deviceKey(device)}
-            device={device}
-            position={position}
-            rotationY={rotationY}
-            isSelected={selectedKey === deviceKey(device)}
-            onClick={() => onSelect(deviceKey(device))}
-          />
+      <Floor dimensions={room.dimensions} />
+      {room.items.map((item) => {
+        if (!item.device) {
+          const Furniture = FURNITURE[item.assetId as FurnitureAssetId]
+          return Furniture && <Placed key={item.id} item={item}><Furniture /></Placed>
+        }
+        // Aparelho ainda nao carregado (ou fora da conta) nao e desenhado por enquanto.
+        const key = deviceRefKey(item.device)
+        const device = devicesByKey.get(key)
+        const Asset = DEVICE_ASSETS[item.assetId as DeviceAssetId]
+        if (!device || !Asset) return null
+        return (
+          <Placed key={item.id} item={item}>
+            <Asset device={device} isSelected={selectedKey === key} onClick={() => onSelect(key)} />
+          </Placed>
         )
-      )}
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={Math.max(ROOM.width, ROOM.depth)} blur={2.4} far={4} />
+      })}
+      <ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={Math.max(width, depth)} blur={2.4} far={4} />
     </group>
   )
 }
 
-export function RoomScene({ devices, selectedKey, onSelect }: RoomSceneProps) {
+export function RoomScene({ room, devices, selectedKey, onSelect }: RoomSceneProps) {
+  const target = useMemo(() => cameraTarget(room.dimensions), [room.dimensions])
   return (
     <div className="room-canvas-wrap">
       {/* Absoluto: o tamanho vem do card, nunca do canvas. Em fluxo, a altura
@@ -117,8 +126,8 @@ export function RoomScene({ devices, selectedKey, onSelect }: RoomSceneProps) {
         <SoftShadows size={26} samples={12} focus={0.6} />
         <color attach="background" args={['#0b0f1a']} />
         <fog attach="fog" args={['#0b0f1a', 12, 30]} />
-        <Atmosphere lightsOn={devices.filter((d) => d.kind === 'light' && d.state.power).length} />
-        <SceneContent devices={devices} selectedKey={selectedKey} onSelect={onSelect} />
+        <Atmosphere lightsOn={devices.filter((d) => d.kind === 'light' && d.state.power).length} target={target} />
+        <SceneContent room={room} devices={devices} selectedKey={selectedKey} onSelect={onSelect} />
         <OrbitControls
           makeDefault
           enablePan={false}
@@ -126,7 +135,7 @@ export function RoomScene({ devices, selectedKey, onSelect }: RoomSceneProps) {
           maxDistance={15}
           minPolarAngle={Math.PI / 7}
           maxPolarAngle={Math.PI / 2.15}
-          target={CAMERA_TARGET}
+          target={target}
           enableDamping
           dampingFactor={0.08}
         />

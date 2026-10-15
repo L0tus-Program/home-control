@@ -5,13 +5,10 @@ import { Html } from '@react-three/drei'
 import type { Device } from '../../../../../shared/types'
 import { modeLabel } from '../../../labels'
 import { useHoverCursor } from '../hooks'
-import { AC_SCALE, type Vec3 } from '../layout'
+import { AC_SCALE } from '../layout'
 
 interface ACDeviceProps {
   device: Device
-  position: Vec3
-  /** Giro em torno de y para encostar o fundo do aparelho na parede. */
-  rotationY?: number
   isSelected: boolean
   onClick: () => void
 }
@@ -57,7 +54,7 @@ function useDisplayTexture(text: string, background: string, color: string): THR
 /** Corpo do aparelho em unidades do modelo (antes de AC_SCALE). */
 const BODY = { width: 2.3, height: 0.62, depth: 0.42 }
 
-export function ACDevice({ device, position, rotationY = 0, isSelected, onClick }: ACDeviceProps) {
+export function ACDevice({ device, isSelected, onClick }: ACDeviceProps) {
   const groupRef = useRef<THREE.Group>(null)
   const flapRef = useRef<THREE.Mesh>(null)
   const { hovered, onPointerOver, onPointerOut } = useHoverCursor()
@@ -102,8 +99,6 @@ export function ACDevice({ device, position, rotationY = 0, isSelected, onClick 
 
   return (
     <group
-      position={position}
-      rotation={[0, rotationY, 0]}
       onClick={(e) => {
         e.stopPropagation()
         onClick()

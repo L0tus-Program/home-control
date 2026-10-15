@@ -1,6 +1,6 @@
 # Experiência da casa: cômodos 3D, grupos e automações
 
-Status: plano em andamento. Já existe no app uma sala 3D fixa com os aparelhos conectados, lista lateral, modal de controles e estado comum por chave composta. Ainda não há edição, persistência de layout nem mais de um cômodo.
+Status: plano em andamento. Já existe no app uma sala 3D desenhada a partir de um layout salvo em `userData/home-layout.json`, com os aparelhos conectados, lista lateral, modal de controles e estado comum por chave composta. Ainda não há edição nem mais de um cômodo.
 
 Prioridade definida em 14/10/2026: **cômodo 3D primeiro**. Direção escolhida: **maquete isométrica elegante, fácil de montar e clicar**.
 
@@ -189,9 +189,12 @@ interface HomeLayout {
   revision: number
   baseRoomId: string // recebe aparelhos novos; não pode ser excluído
   rooms: Room[]
+  unassignedDevices: DeviceRef[] // conhecidos e sem cômodo; não voltam sozinhos ao base
   selectedRoomId?: string
 }
 ```
+
+Implementado em `src/shared/home.ts`. `unassignedDevices` é o que distingue um aparelho que o usuário deixou "Sem cômodo" de um aparelho recém-conectado: só aparelhos que o layout nunca viu entram sozinhos no cômodo base.
 
 O **padrão original** não é guardado no layout: é uma função `defaultRoom()` no código, gerada a partir das medidas e posições que hoje estão em `features/rooms/layout.ts` e `Furniture.tsx`. Ela cria o cômodo base na primeira abertura e cada novo cômodo (este sem aparelhos).
 
@@ -230,11 +233,11 @@ Já concluído:
 - Identidade composta (`deviceKey` em `shared/devices`) e uma única fonte de estado dos aparelhos.
 - Cena 3D com a sala padrão, móveis, luzes e ar com posições fixas, seleção pela maquete ou pela lista.
 - Modal de controles (`DeviceControlModal`) ligado ao fluxo real de comandos.
+- **Layout como dados:** `defaultRoom()` + `HomeLayout` em `shared/home.ts`, com catálogo local de assets; a cena desenha móveis e aparelhos a partir de `RoomItem[]`, sem mudança visível.
+- **Persistência:** `main/home-layout-store.ts` com versão, revisão, validação, escrita atômica, `.bak` e recuperação de arquivo inválido (preservado como `home-layout.invalid-*.json`); IPC `home-layout:get`, `home-layout:save` e `home-layout:place-devices`. Aparelhos novos entram no cômodo base.
 
 Sequência restante:
 
-1. **Layout como dados:** transformar a sala fixa em `defaultRoom()` + `HomeLayout`; móveis e aparelhos passam a ser desenhados a partir de `RoomItem[]`. Sem mudança visível.
-2. **Persistência:** contrato em `shared/home.ts`, `main/home-layout-store.ts` com versão, validação e escrita atômica, IPC de leitura/gravação. Aparelhos novos entram no cômodo base.
 3. **Modo edição:** mover, girar, adicionar e remover itens, com salvar/cancelar e teclado.
 4. **Tamanho da sala:** largura e profundidade com limites, trazendo para dentro o que ficar fora.
 5. **Vários cômodos:** Novo cômodo a partir do padrão original, renomear, excluir (exceto o base), mover aparelho entre cômodos e lista "Sem cômodo".

@@ -37,8 +37,8 @@ const EMPTY: HomeRead = { devices: [], statuses: [] }
 
 /**
  * Aplica uma leitura da nuvem sobre o que ja esta em memoria. So os drivers
- * consultados sao trocados, a ordem dos drivers se mantem (o layout 3D
- * posiciona pela ordem da lista) e um driver que falhou continua mostrando
+ * consultados sao trocados, a ordem dos drivers se mantem (a lista do comodo
+ * segue essa ordem) e um driver que falhou continua mostrando
  * os ultimos aparelhos conhecidos em vez de sumir da casa.
  */
 function mergeRead(current: HomeRead, fresh: HomeRead, queried: string[]): HomeRead {

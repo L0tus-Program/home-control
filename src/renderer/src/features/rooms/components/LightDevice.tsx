@@ -4,11 +4,9 @@ import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import type { Device } from '../../../../../shared/types'
 import { useCanvasTexture, useHoverCursor } from '../hooks'
-import type { Vec3 } from '../layout'
 
 interface LightDeviceProps {
   device: Device
-  position: Vec3
   isSelected: boolean
   onClick: () => void
 }
@@ -37,7 +35,7 @@ function drawHalo(ctx: CanvasRenderingContext2D, size: number): void {
   ctx.fillRect(0, 0, size, size)
 }
 
-export function LightDevice({ device, position, isSelected, onClick }: LightDeviceProps) {
+export function LightDevice({ device, isSelected, onClick }: LightDeviceProps) {
   const groupRef = useRef<THREE.Group>(null)
   const bulbRef = useRef<THREE.Mesh>(null)
   const { hovered, onPointerOver, onPointerOut } = useHoverCursor()
@@ -63,7 +61,6 @@ export function LightDevice({ device, position, isSelected, onClick }: LightDevi
   return (
     <group
       ref={groupRef}
-      position={position}
       onClick={(e) => {
         e.stopPropagation()
         onClick()

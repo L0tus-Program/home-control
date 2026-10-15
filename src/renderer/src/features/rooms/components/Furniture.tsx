@@ -3,7 +3,8 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { RoundedBox } from '@react-three/drei'
 import { useCanvasTexture } from '../hooks'
-import { BACK_WALL_Z, LEFT_WALL_X, ROOM, type Vec3 } from '../layout'
+import { BOOKSHELF_SIZE, SOFA_SIZE, type FurnitureAssetId } from '../../../../../shared/home'
+import type { Vec3 } from '../layout'
 
 const SOFA = {
   frame: '#4a5a6b',
@@ -106,19 +107,17 @@ function SofaBlock({ position, width, depth, seats, back = false, armLeft = fals
   )
 }
 
-/** Sofa em L encostado na parede do fundo, com a chaise saindo pela esquerda. */
+/**
+ * Sofa em L com a chaise saindo pela esquerda. A origem e o centro do modulo
+ * com encosto, que fica rente a parede.
+ */
 function Sofa() {
-  const width = 2.4
-  const depth = 0.95
-  const right = 0
-  const backZ = BACK_WALL_Z + 0.04
-  const frontZ = backZ + depth
+  const { width, depth } = SOFA_SIZE
   const chaise = { width: 0.85, length: 1.6 }
-  const left = right - width
   return (
     <group>
-      <SofaBlock position={[left + width / 2, 0, backZ + depth / 2]} width={width} depth={depth} seats={3} back armLeft armRight />
-      <SofaBlock position={[left + chaise.width / 2, 0, frontZ + chaise.length / 2]} width={chaise.width}
+      <SofaBlock position={[0, 0, 0]} width={width} depth={depth} seats={3} back armLeft armRight />
+      <SofaBlock position={[-width / 2 + chaise.width / 2, 0, depth / 2 + chaise.length / 2]} width={chaise.width}
         depth={chaise.length} seats={1} armLeft />
     </group>
   )
@@ -127,7 +126,7 @@ function Sofa() {
 function CoffeeTable() {
   const height = 0.4
   return (
-    <group position={[-0.6, 0, BACK_WALL_Z + 1.95]}>
+    <group>
       <mesh position={[0, height - 0.02, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.5, 0.5, 0.04, 64]} />
         <meshStandardMaterial color="#3e2723" roughness={0.3} metalness={0.1} />
@@ -155,11 +154,9 @@ function CoffeeTable() {
 
 const BOOK_COLORS = ['#c0392b', '#2980b9', '#27ae60', '#d4a017', '#7d5ba6', '#34495e', '#e67e22']
 
-/** Estante aberta encostada na parede esquerda, com livros apoiados nas prateleiras. */
+/** Estante aberta, com livros apoiados nas prateleiras. O fundo fica em -z/2 da peca. */
 function Bookshelf() {
-  const width = 1.6
-  const height = 2.0
-  const depth = 0.36
+  const { width, height, depth } = BOOKSHELF_SIZE
   const t = 0.04
   const levels = 4
   const gap = (height - 2 * t) / levels
@@ -188,7 +185,7 @@ function Bookshelf() {
   }, [gap])
 
   return (
-    <group position={[LEFT_WALL_X + depth / 2, 0, BACK_WALL_Z + 4.8]} rotation={[0, Math.PI / 2, 0]}>
+    <group>
       <mesh position={[0, height / 2, -depth / 2 + t / 2]} castShadow receiveShadow>
         <boxGeometry args={[width, height, t]} />
         {wood}
@@ -222,7 +219,7 @@ function Bookshelf() {
   )
 }
 
-/** Planta no canto, ao lado da janela. As folhas sao fixas para nao pular a cada render. */
+/** Planta em vaso. As folhas sao fixas para nao pular a cada render. */
 function Plant() {
   const plantRef = useRef<THREE.Group>(null)
   const potHeight = 0.5
@@ -242,7 +239,7 @@ function Plant() {
   })
 
   return (
-    <group ref={plantRef} position={[ROOM.width / 2 - 0.45, 0, BACK_WALL_Z + 0.55]}>
+    <group ref={plantRef}>
       <mesh position={[0, potHeight / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.28, 0.21, potHeight, 32]} />
         <meshStandardMaterial color="#8d6e63" roughness={0.8} />
@@ -265,19 +262,21 @@ function Plant() {
   )
 }
 
-export function Furniture() {
+function Rug() {
   const rugTexture = useCanvasTexture(512, drawRug, [1.5, 1])
-
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-0.9, 0.005, BACK_WALL_Z + 1.7]} receiveShadow>
-        <planeGeometry args={[3.6, 2.6]} />
-        <meshStandardMaterial map={rugTexture} roughness={0.95} color="#f0ebe3" />
-      </mesh>
-      <Sofa />
-      <CoffeeTable />
-      <Bookshelf />
-      <Plant />
-    </group>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
+      <planeGeometry args={[3.6, 2.6]} />
+      <meshStandardMaterial map={rugTexture} roughness={0.95} color="#f0ebe3" />
+    </mesh>
   )
+}
+
+/** Moveis do catalogo, desenhados na origem; o RoomItem da posicao e giro. */
+export const FURNITURE: Record<FurnitureAssetId, () => React.JSX.Element> = {
+  'sofa-l': Sofa,
+  'coffee-table': CoffeeTable,
+  bookshelf: Bookshelf,
+  plant: Plant,
+  rug: Rug
 }

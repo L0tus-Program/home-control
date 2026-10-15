@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { DeviceCandidate, HomeLayout } from '../shared/home'
 import type { AppSettings, Command, Device, DriverStatus, Result, TuyaQrCheck } from '../shared/types'
 import type { TuyaQrCode } from '../shared/tuya'
 
@@ -31,6 +32,16 @@ const api = {
     deviceId: string
     command: Command
   }): Promise<Result<Device>> => ipcRenderer.invoke('devices:command', input),
+
+  getHomeLayout: (): Promise<Result<HomeLayout>> => ipcRenderer.invoke('home-layout:get'),
+
+  /** `expectedRevision` e a revisao lida antes da edicao; outra revisao no disco e conflito. */
+  saveHomeLayout: (layout: HomeLayout, expectedRevision: number): Promise<Result<HomeLayout>> =>
+    ipcRenderer.invoke('home-layout:save', { layout, expectedRevision }),
+
+  /** Aparelhos conectados; os que o layout nunca viu entram no comodo base. */
+  placeDevices: (devices: DeviceCandidate[]): Promise<Result<HomeLayout>> =>
+    ipcRenderer.invoke('home-layout:place-devices', devices),
 
   openExternal: (url: string): Promise<Result<void>> =>
     ipcRenderer.invoke('shell:open-external', url),

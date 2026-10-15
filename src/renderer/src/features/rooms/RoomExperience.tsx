@@ -5,6 +5,7 @@ import { DeviceControlModal } from '../../components/DeviceControlModal'
 import { RefreshIcon, SettingsIcon } from '../../components/Icons'
 import { modeLabel } from '../../labels'
 import { RoomScene } from './components/RoomScene'
+import { useHomeLayout } from './useHomeLayout'
 
 interface Props {
   devices: Device[]
@@ -30,7 +31,9 @@ function deviceStatus(device: Device): string {
 
 export function RoomExperience({ devices, loading, pending, error, connected, onRefresh, onOpenSettings, onCommand }: Props): React.JSX.Element {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const roomName = 'Sala viva'
+  const layout = useHomeLayout(devices)
+  const room = layout?.rooms.find((item) => item.id === (layout.selectedRoomId ?? layout.baseRoomId))
+  const roomName = room?.name ?? 'Sala viva'
   const previousCount = useRef(devices.length)
 
   const devicesByKey = useMemo(() => new Map(devices.map((device) => [deviceKey(device), device])), [devices])
@@ -89,7 +92,8 @@ export function RoomExperience({ devices, loading, pending, error, connected, on
             </div>
           </div>
 
-          <RoomScene devices={devices} selectedKey={selectedKey} onSelect={setSelectedKey} />
+          {/* Espera o layout local (milissegundos) para nao piscar a sala padrao. */}
+          {room ? <RoomScene room={room} devices={devices} selectedKey={selectedKey} onSelect={setSelectedKey} /> : <div className="room-canvas-wrap" />}
         </div>
 
         <aside className="room-panel" aria-label="Aparelhos do cômodo">
