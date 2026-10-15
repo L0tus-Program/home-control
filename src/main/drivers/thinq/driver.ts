@@ -146,9 +146,13 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
   })
 
   const timer = asRecord(property.timer)
+  // So entra o timer que o app consegue ver (flag SET legivel) e cancelar (UNSET gravavel).
   const timers = (['on', 'off'] as TimerAction[]).filter((action) => {
     const fields = TIMER_FIELDS[action]
-    return isWritable(descriptor(timer[fields.hour])) && isWritable(descriptor(timer[fields.minute]))
+    const flag = descriptor(timer[fields.flag])
+    const readable = Array.isArray(flag?.value?.r) && flag.value.r.includes('SET')
+    return isWritable(descriptor(timer[fields.hour])) && isWritable(descriptor(timer[fields.minute])) &&
+      readable && writableOptions(flag).includes('UNSET')
   })
 
   return {
@@ -464,7 +468,16 @@ export class ThinqDriver implements Driver {
         }
         const minutes = Math.round(command.minutes)
         if (!Number.isFinite(minutes) || minutes < 1 || minutes > LG_TIMER_MAX_MINUTES) throw new DriverError('Prazo de timer invalido.')
-        await client.control(deviceId, { timer: { [fields.hour]: Math.floor(minutes / 60), [fields.minute]: minutes % 60 } })
+        // Ligar programado so com o ar desligado; desligar programado so com ele ligado.
+        const power = asRecord(asRecord(await client.getState(deviceId)).operation).airConOperationMode === 'POWER_ON'
+        if ((command.action === 'off') !== power) {
+          throw new DriverError(power ? 'O ar ja esta ligado.' : 'O ar ja esta desligado.')
+        }
+        const hour = Math.floor(minutes / 60)
+        const minute = minutes % 60
+        // Como o SDK oficial: no desligar, minuto zero vai omitido.
+        const body = command.action === 'off' && minute === 0 ? { [fields.hour]: hour } : { [fields.hour]: hour, [fields.minute]: minute }
+        await client.control(deviceId, { timer: body })
         return
       }
 
@@ -604,6 +617,7 @@ export class ThinqDriver implements Driver {
           return
         }
         credentialFailures = 0
+        if ('operation' in message.report && !('timer' in message.report) && 'timer' in entry.raw) reread(message.deviceId)
         entry.raw = mergeReport(entry.raw, message.report)
         entry.rev = ++this.revision
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })

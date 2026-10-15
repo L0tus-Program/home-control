@@ -34,19 +34,33 @@ test('LG: timers do perfil viram capability; estado SET vira minutos restantes',
   assert.deepEqual(unknown.state.timer, { on: 0 }, 'programado sem prazo conhecido')
 })
 
-test('LG: programa em horas e minutos e cancela com UNSET', async () => {
+test('LG: programa em horas e minutos (minuto zero omitido no desligar, como o SDK) e cancela com UNSET', async () => {
   const controls = []
-  const driver = new ThinqDriver(lg({}, controls))
+  const state = { operation: { airConOperationMode: 'POWER_ON' } }
+  const driver = new ThinqDriver(lg(state, controls))
   await driver.execute('ar', { type: 'timer', action: 'off', minutes: 90 })
-  await driver.execute('ar', { type: 'timer', action: 'on', minutes: 30 })
+  await driver.execute('ar', { type: 'timer', action: 'off', minutes: 120 })
   await driver.execute('ar', { type: 'timer', action: 'off', minutes: null })
+  state.operation.airConOperationMode = 'POWER_OFF'
+  await driver.execute('ar', { type: 'timer', action: 'on', minutes: 60 })
   assert.deepEqual(controls, [
     { timer: { relativeHourToStop: 1, relativeMinuteToStop: 30 } },
-    { timer: { relativeHourToStart: 0, relativeMinuteToStart: 30 } },
-    { timer: { relativeStopTimer: 'UNSET' } }
+    { timer: { relativeHourToStop: 2 } },
+    { timer: { relativeStopTimer: 'UNSET' } },
+    { timer: { relativeHourToStart: 1, relativeMinuteToStart: 0 } }
   ])
-  await assert.rejects(driver.execute('ar', { type: 'timer', action: 'off', minutes: 0 }), /invalido/)
-  await assert.rejects(driver.execute('ar', { type: 'timer', action: 'off', minutes: 25 * 60 }), /invalido/)
+  await assert.rejects(driver.execute('ar', { type: 'timer', action: 'off', minutes: 30 }), /ja esta desligado/, 'acao incoerente com a energia')
+  await assert.rejects(driver.execute('ar', { type: 'timer', action: 'on', minutes: 0 }), /invalido/)
+  await assert.rejects(driver.execute('ar', { type: 'timer', action: 'on', minutes: 25 * 60 }), /invalido/)
+})
+
+test('LG: sem flag legivel ou sem UNSET gravavel, o timer nao entra', async () => {
+  const odd = lg({})
+  odd.getProfile = async () => ({ property: { ...profile.property, timer: { ...profile.property.timer,
+    relativeStopTimer: { type: 'enum', mode: ['w'], value: { w: ['UNSET'] } },
+    relativeStartTimer: { type: 'enum', mode: ['r'], value: { r: ['SET', 'UNSET'] } } } } })
+  const [device] = await new ThinqDriver(odd).listDevices()
+  assert.equal(device.capabilities.some((cap) => cap.kind === 'timer'), false)
 })
 
 test('Tuya: countdown_1 vira timer de desligar (acesa) ou de ligar (apagada)', () => {

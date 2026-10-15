@@ -153,6 +153,7 @@ export class TuyaDriver implements Driver {
         return
       }
       case 'timer': {
+        if (!functions.some((item) => item.code === 'countdown_1')) throw new DriverError('Esta lâmpada não tem timer.')
         // O contador inverte a energia: "desligar" so faz sentido acesa, "ligar" so apagada.
         const status = await cloud.getStatus(deviceId)
         const power = status.find((item) => item.code === 'switch_led')?.value === true
@@ -246,6 +247,11 @@ export class TuyaDriver implements Driver {
         const { updates, unresolved } = resolveReport(message.items, entry.info, functions)
         if (unresolved) reread(message.devId)
         if (updates.length === 0) return
+        // A energia mudou e o contador não veio: ele pode ter acabado de zerar. Confirma pela nuvem.
+        const countdown = entry.status.find((item) => item.code === 'countdown_1')?.value
+        if (updates.some((item) => item.code === 'switch_led') && !updates.some((item) => item.code === 'countdown_1') && typeof countdown === 'number' && countdown > 0) {
+          reread(message.devId)
+        }
         // Quem relata estado está online.
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }
