@@ -1,4 +1,4 @@
-import type { Command, Device } from '../../shared/types'
+import type { Command, Device, DeviceEvent, RealtimeState } from '../../shared/types'
 
 /**
  * Contrato de uma integracao.
@@ -20,6 +20,22 @@ export interface Driver {
 
   /** Aplica um comando. Deve lancar erro com mensagem legivel em falha. */
   execute(deviceId: string, command: Command): Promise<void>
+
+  /**
+   * Liga o canal de tempo real. Ausente = integracao sem tempo real; o app
+   * segue atualizando por leitura. Nunca deve lancar por falha de conexao:
+   * reporta pelo `status` e tenta de novo sozinho.
+   */
+  watch?(listener: RealtimeListener): Promise<RealtimeHandle>
+}
+
+export interface RealtimeListener {
+  event(event: DeviceEvent): void
+  status(state: RealtimeState, error?: string): void
+}
+
+export interface RealtimeHandle {
+  stop(): Promise<void>
 }
 
 export class DriverError extends Error {

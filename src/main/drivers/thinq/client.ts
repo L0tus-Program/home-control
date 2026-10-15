@@ -62,6 +62,11 @@ export interface ThinqConfig {
 export class ThinqClient {
   constructor(private readonly config: ThinqConfig) {}
 
+  /** O MQTT da LG exige o mesmo client id usado no REST. */
+  get clientId(): string {
+    return this.config.clientId
+  }
+
   private url(endpoint: string): string {
     return `https://api-${regionFromCountry(this.config.country)}.lgthinq.com/${endpoint}`
   }
@@ -79,7 +84,7 @@ export class ThinqClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     endpoint: string,
     options: { body?: unknown; extraHeaders?: Record<string, string> } = {}
   ): Promise<T> {
@@ -129,7 +134,59 @@ export class ThinqClient {
       extraHeaders: { 'x-conditional-control': 'true' }
     })
   }
+
+  // ── Tempo real (MQTT) ─────────────────────────────────────────────────────
+
+  /** Registra o x-client-id como cliente MQTT. `allowExist` deixa repetir sem erro. */
+  registerClient(): Promise<unknown> {
+    return this.request('POST', 'client', { body: MQTT_CLIENT_BODY })
+  }
+
+  unregisterClient(): Promise<unknown> {
+    return this.request('DELETE', 'client', { body: MQTT_CLIENT_BODY })
+  }
+
+  getRoute(): Promise<{ mqttServer?: unknown }> {
+    return this.request('GET', 'route')
+  }
+
+  /** Troca o CSR por um certificado e pelo topico que este cliente pode assinar. */
+  issueCertificate(csr: string): Promise<Record<string, unknown>> {
+    return this.request('POST', 'client/certificate', {
+      body: { 'service-code': MQTT_SERVICE_CODE, csr }
+    })
+  }
+
+  /** Eventos de estado do aparelho. A LG expira a assinatura; renovamos antes disso. */
+  subscribeEvents(deviceId: string): Promise<unknown> {
+    return this.request('POST', `event/${encodeURIComponent(deviceId)}/subscribe`, {
+      body: { expire: { unit: 'HOUR', timer: EVENT_SUBSCRIPTION_HOURS } }
+    })
+  }
+
+  unsubscribeEvents(deviceId: string): Promise<unknown> {
+    return this.request('DELETE', `event/${encodeURIComponent(deviceId)}/unsubscribe`)
+  }
+
+  /** Aparelhos que entram, saem ou mudam de nome na conta. */
+  subscribeDeviceList(): Promise<unknown> {
+    return this.request('POST', 'push/devices')
+  }
+
+  unsubscribeDeviceList(): Promise<unknown> {
+    return this.request('DELETE', 'push/devices')
+  }
 }
+
+const MQTT_SERVICE_CODE = 'SVC202'
+const MQTT_CLIENT_BODY = { type: 'MQTT', 'service-code': MQTT_SERVICE_CODE, 'device-type': '607', allowExist: true }
+const EVENT_SUBSCRIPTION_HOURS = 4464
+
+/**
+ * Assinatura que ja existia: para nos, sucesso. O SDK documenta 1207; a nuvem
+ * real (conta BR, 10/2026) responde 4001 "Already Subscribed Home Push".
+ */
+export const ALREADY_SUBSCRIBED = new Set(['1207', '4001'])
 
 /** Traduz os codigos de erro mais comuns da LG para algo acionavel. */
 function describeError(code: string | undefined, fallback: string): string {

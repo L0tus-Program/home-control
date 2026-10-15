@@ -63,6 +63,33 @@ export interface DriverStatus {
   configured: boolean
   /** Ultima falha de comunicacao, se houver. */
   error?: string
+  /** Canal de atualizacao em tempo real; ausente quando a integracao nao tem. */
+  realtime?: RealtimeStatus
+}
+
+/**
+ * `off`: integracao sem tempo real ou sem conta. `connecting`: tentando.
+ * `live`: recebendo eventos. `unavailable`: desistiu por ora; o app segue
+ * atualizando como sem tempo real.
+ */
+export type RealtimeState = 'off' | 'connecting' | 'live' | 'unavailable'
+
+export interface RealtimeStatus {
+  state: RealtimeState
+  error?: string
+}
+
+/** O que um driver avisa em tempo real, ja traduzido para o modelo comum. */
+export type DeviceEvent =
+  | { type: 'state'; device: Device }
+  | { type: 'availability'; deviceId: string; online: boolean }
+  /** Algo mudou que pede reler a lista: aparelho novo, removido, renomeado ou eventos perdidos. */
+  | { type: 'refresh' }
+
+/** Eventos de um driver, agrupados pelo processo principal antes de cruzar o IPC. */
+export interface DeviceEventBatch {
+  driverId: string
+  events: DeviceEvent[]
 }
 
 export interface ThinqSettings {

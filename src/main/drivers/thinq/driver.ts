@@ -1,6 +1,11 @@
+import type { IClientOptions, MqttClient } from 'mqtt'
 import type { Capability, Command, Device, DeviceState } from '../../../shared/types'
-import { DriverError, type Driver } from '../types'
-import { ThinqClient, type ThinqDeviceListItem } from './client'
+import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
+import { MqttLink } from '../../realtime/mqtt-link'
+import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
+import { ALREADY_SUBSCRIBED, ThinqClient, type ThinqDeviceListItem } from './client'
+import { createCsr } from './csr'
+import { mergeReport, parseThinqMessage } from './realtime'
 
 export const THINQ_DRIVER_ID = 'thinq'
 
@@ -191,14 +196,63 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   return capabilities
 }
 
+/** Chave e certificado do MQTT; guardados no cofre para nao emitir um a cada abertura. */
+export interface ThinqMqttCredentials {
+  clientId: string
+  privateKeyPem: string
+  certificatePem: string
+  subscriptions: string[]
+}
+
+export interface ThinqRealtimeOptions {
+  loadCredentials?: (clientId: string) => ThinqMqttCredentials | null
+  saveCredentials?: (credentials: ThinqMqttCredentials | null) => void
+  connect?: (url: string, options: IClientOptions) => MqttClient
+}
+
+/** Token invalido, conta errada, pais sem suporte: reconectar nao resolve. */
+const FATAL_CODES = new Set(['1103', '1218', '1302', '1303', '1307'])
+/** A assinatura de eventos expira (4464 h); o SDK oficial renova uma vez por dia. */
+const RESUBSCRIBE_MS = 24 * 60 * 60 * 1000
+const REREAD_DELAY_MS = 1500
+const REREAD_MIN_INTERVAL_MS = 10_000
+const RESUBSCRIBE_AFTER_CHANGE_MS = 5000
+/** Assinatura que falhou (cota, rede) e tentada de novo bem antes da renovacao diaria. */
+const SUBSCRIBE_RETRY_MS = 5 * 60 * 1000
+const ROUTE_TTL_MS = 10 * 60 * 1000
+const REISSUE_MIN_INTERVAL_MS = 10 * 60 * 1000
+
+/**
+ * O broker recusou o certificado: CONNACK 4/5 (MQTT 3.1.1), 134/135 (MQTT 5)
+ * ou falha no aperto de mao TLS. Rede caida, DNS e porta bloqueada nao contam.
+ */
+export function isCredentialRefusal(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false
+  const code = (cause as { code?: unknown }).code
+  if (typeof code === 'number' && [4, 5, 134, 135].includes(code)) return true
+  if (typeof code === 'string' && /^ERR_SSL_/.test(code)) return true
+  return /not authori[sz]ed|bad user ?name or password|certificate|handshake|alert/i.test(cause.message)
+}
+
+function errorCode(cause: unknown): string {
+  return cause instanceof Error ? String((cause as { code?: unknown }).code ?? '') : ''
+}
+
 export class ThinqDriver implements Driver {
   readonly id = THINQ_DRIVER_ID
   readonly label = 'LG ThinQ'
 
   /** Perfis quase nunca mudam; buscar a cada refresh so queima cota da API. */
   private readonly layouts = new Map<string, AcLayout>()
+  /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
+  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number }>()
+  /** Contador que so cresce: a protecao contra leitura atrasada sobrevive a remocoes do cache. */
+  private revision = 0
 
-  constructor(private readonly client: ThinqClient | null) {}
+  constructor(
+    private readonly client: ThinqClient | null,
+    private readonly realtime: ThinqRealtimeOptions = {}
+  ) {}
 
   isConfigured(): boolean {
     return this.client !== null
@@ -213,19 +267,26 @@ export class ThinqDriver implements Driver {
 
   async listDevices(): Promise<Device[]> {
     const client = this.requireClient()
+    const startedAt = Date.now()
     const items = (await client.listDevices()) ?? []
+    const ids = new Set(items.map((item) => item.deviceId))
+    for (const [id, entry] of this.known) if (!ids.has(id) && entry.at < startedAt) this.known.delete(id)
     return Promise.all(items.map((item) => this.hydrate(item)))
   }
 
   async getDevice(deviceId: string): Promise<Device> {
     const client = this.requireClient()
+    // Ficha ja conhecida: so o estado precisa vir da nuvem, sem relistar a conta.
+    // A falha de leitura sobe: "offline e desligado" nao pode passar por confirmacao.
+    const cached = this.known.get(deviceId)?.item
+    if (cached) return this.read(cached)
     const items = (await client.listDevices()) ?? []
     const item = items.find((entry) => entry.deviceId === deviceId)
     if (!item) throw new DriverError('Aparelho nao encontrado na conta LG.')
     return this.hydrate(item)
   }
 
-  private async hydrate(item: ThinqDeviceListItem): Promise<Device> {
+  private base(item: ThinqDeviceListItem): Device {
     const info = item.deviceInfo ?? {}
     const name = info.alias?.trim() || info.modelName || 'Aparelho LG'
     const base: Device = {
@@ -237,22 +298,40 @@ export class ThinqDriver implements Driver {
       capabilities: [],
       state: { online: false, power: false }
     }
+    return base
+  }
+
+  private build(item: ThinqDeviceListItem, layout: AcLayout, raw: Record<string, unknown>): Device {
+    return { ...this.base(item), capabilities: buildCapabilities(layout), state: readState(raw, layout) }
+  }
+
+  private async hydrate(item: ThinqDeviceListItem): Promise<Device> {
+    const base = this.base(item)
 
     // Por ora so o ar-condicionado tem controles. Os outros aparecem listados.
     if (base.kind !== 'air-conditioner') return base
 
     try {
-      const layout = await this.layoutFor(item.deviceId)
-      const state = await this.requireClient().getState(item.deviceId)
-      return {
-        ...base,
-        capabilities: buildCapabilities(layout),
-        state: readState(state, layout)
-      }
+      return await this.read(item)
     } catch (cause) {
       // Um aparelho offline nao pode derrubar a lista inteira.
       return { ...base, state: { online: false, power: false } }
     }
+  }
+
+  /** Le o estado do ar; lanca em falha. */
+  private async read(item: ThinqDeviceListItem): Promise<Device> {
+    const rev = this.known.get(item.deviceId)?.rev ?? 0
+    const layout = await this.layoutFor(item.deviceId)
+    const raw = asRecord(await this.requireClient().getState(item.deviceId))
+    const current = this.known.get(item.deviceId)
+    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+    if (current && current.rev !== rev) {
+      current.item = item
+      return this.build(item, layout, current.raw)
+    }
+    this.known.set(item.deviceId, { item, raw, rev, at: Date.now() })
+    return this.build(item, layout, raw)
   }
 
   private async layoutFor(deviceId: string): Promise<AcLayout> {
@@ -300,6 +379,156 @@ export class ThinqDriver implements Driver {
 
       default:
         throw new DriverError(`Comando nao suportado pela LG: ${(command as Command).type}`)
+    }
+  }
+
+  /** Tempo real pelo MQTT oficial (AWS IoT com certificado do cliente). */
+  async watch(listener: RealtimeListener): Promise<RealtimeHandle> {
+    const client = this.requireClient()
+    let stopped = false
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const later = (key: string, delay: number, run: () => void): void => {
+      if (stopped || timers.has(key)) return
+      timers.set(key, setTimeout(() => { timers.delete(key); run() }, delay))
+    }
+    const lastReread = new Map<string, number>()
+    const reread = (id: string): void => {
+      const wait = Math.max(REREAD_DELAY_MS, (lastReread.get(id) ?? -Infinity) + REREAD_MIN_INTERVAL_MS - Date.now())
+      later(`reread:${id}`, wait, () => {
+        lastReread.set(id, Date.now())
+        this.getDevice(id).then((device) => listener.event({ type: 'state', device }), () => undefined)
+      })
+    }
+
+    let credentials: ThinqMqttCredentials | null = null
+    /** Quando o certificado em uso foi emitido nesta sessao; nunca reemite em seguida. */
+    let issuedAt = 0
+    let credentialFailures = 0
+    let registered = false
+    let route: { url: string; at: number } | null = null
+    let subscribed = false
+
+    /**
+     * Assina eventos dos ares da conta (inclusive os offline agora) e a lista de
+     * aparelhos. "Ja assinado" e sucesso; outra falha fica pendente e e tentada
+     * de novo em minutos. Assinar nunca impede a conexao; so token ou conta
+     * invalidos interrompem.
+     */
+    const subscribe = async (): Promise<void> => {
+      // Base para os relatos parciais; a UI normalmente ja leu, mas o canal pode vir antes.
+      if (this.known.size === 0) await this.listDevices()
+      const items = (await client.listDevices()) ?? []
+      let pending = false
+      const attempt = async (run: () => Promise<unknown>): Promise<void> => {
+        try {
+          await run()
+        } catch (cause) {
+          if (FATAL_CODES.has(errorCode(cause))) throw cause
+          if (!ALREADY_SUBSCRIBED.has(errorCode(cause))) pending = true
+        }
+      }
+      for (const item of items) {
+        if (stopped) return
+        if (item.deviceInfo?.deviceType === AC_TYPE) await attempt(() => client.subscribeEvents(item.deviceId))
+      }
+      await attempt(() => client.subscribeDeviceList())
+      subscribed = !pending
+      if (pending) later('subscribe', SUBSCRIBE_RETRY_MS, () => { void subscribe().catch(() => undefined) })
+    }
+
+    const issue = async (): Promise<ThinqMqttCredentials> => {
+      const { csr, privateKeyPem } = await createCsr()
+      if (stopped) throw new DriverError('Tempo real encerrado.')
+      const issued = await client.issueCertificate(csr)
+      const body = asRecord(issued.result ?? issued)
+      const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions.filter((topic): topic is string => typeof topic === 'string') : []
+      if (typeof body.certificatePem !== 'string' || subscriptions.length === 0) {
+        throw new DriverError('A LG não emitiu o certificado do tempo real.')
+      }
+      return { clientId: client.clientId, privateKeyPem, certificatePem: body.certificatePem, subscriptions }
+    }
+
+    const link: MqttLink = new MqttLink({
+      prepare: async (lastError) => {
+        // Registro e rota uma vez por sessao: falha so do MQTT nao gasta REST a cada tentativa.
+        if (!registered) {
+          await client.registerClient()
+          registered = true
+        }
+        if (!route || Date.now() - route.at > ROUTE_TTL_MS) {
+          const response = await client.getRoute()
+          route = { url: secureBrokerUrl(response?.mqttServer, LG_BROKER_DOMAINS), at: Date.now() }
+        }
+        if (stopped) throw new DriverError('Tempo real encerrado.')
+
+        credentials ??= this.realtime.loadCredentials?.(client.clientId) ?? null
+        // Reemite so quando o broker recusou o certificado: na primeira recusa de um
+        // certificado vindo do cofre, ou depois de varias seguidas. Nunca logo apos emitir.
+        if (lastError !== undefined && isCredentialRefusal(lastError)) credentialFailures++
+        const recentlyIssued = Date.now() - issuedAt < REISSUE_MIN_INTERVAL_MS
+        if (credentials && !recentlyIssued && (credentialFailures >= 3 || (credentialFailures >= 1 && issuedAt === 0 && link.connectedNever()))) {
+          credentials = null
+        }
+        if (!credentials) {
+          const fresh = await issue()
+          // O token pode ter sido removido durante a emissao: nada volta ao cofre.
+          if (stopped) throw new DriverError('Tempo real encerrado.')
+          credentials = fresh
+          issuedAt = Date.now()
+          credentialFailures = 0
+          this.realtime.saveCredentials?.(fresh)
+        }
+        if (!subscribed) await subscribe()
+        return {
+          url: route.url,
+          options: { clientId: client.clientId, key: credentials.privateKeyPem, cert: credentials.certificatePem, protocolVersion: 4, clean: false, keepalive: 60 },
+          topics: credentials.subscriptions
+        }
+      },
+      message: (_topic, payload) => {
+        let raw: unknown
+        try { raw = JSON.parse(payload.toString('utf8')) } catch { return }
+        const message = parseThinqMessage(raw)
+        if (!message) return
+        if (message.kind === 'changed') {
+          listener.event({ type: 'refresh' })
+          // Aparelho novo precisa da propria assinatura de eventos.
+          later('subscribe', RESUBSCRIBE_AFTER_CHANGE_MS, () => {
+            void this.listDevices().then(() => subscribe()).catch(() => undefined)
+          })
+          return
+        }
+        if (message.kind === 'push') return
+        const entry = this.known.get(message.deviceId)
+        const layout = this.layouts.get(message.deviceId)
+        if (!entry || !layout) {
+          reread(message.deviceId)
+          return
+        }
+        credentialFailures = 0
+        entry.raw = mergeReport(entry.raw, message.report)
+        entry.rev = ++this.revision
+        listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })
+      },
+      status: (state, error) => {
+        if (state === 'live') credentialFailures = 0
+        listener.status(state, error)
+      },
+      reconnected: () => listener.event({ type: 'refresh' }),
+      isFatal: (cause) => FATAL_CODES.has(errorCode(cause)),
+      ...(this.realtime.connect ? { connect: this.realtime.connect } : {})
+    })
+
+    const renew = setInterval(() => { void subscribe().catch(() => undefined) }, RESUBSCRIBE_MS)
+    link.start()
+    return {
+      stop: async () => {
+        stopped = true
+        clearInterval(renew)
+        for (const timer of timers.values()) clearTimeout(timer)
+        timers.clear()
+        await link.stop()
+      }
     }
   }
 }

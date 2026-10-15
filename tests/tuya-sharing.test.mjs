@@ -245,3 +245,49 @@ test('aceita somente origens oficiais e impede credenciais, caminhos, portas e d
     assert.throws(() => new TuyaSharing({ ...session(), endpoint }, () => {}), /endereço/)
   }
 })
+
+test('guarda só a tradução dpId → código dos aparelhos com controle local, nunca a chave local', async (t) => {
+  mockApi(t, ({ path }) => {
+    if (path.endsWith('/homes')) return [{ ownerId: 12 }]
+    return [{
+      ...lamp(), local_key: 'chave-privada', support_local: true,
+      local_strategy: {
+        20: { status_code: 'switch_led', value_convert: 'default', config_item: { valueType: 'Boolean', pid: 'x' } },
+        x: { status_code: 'invalido' },
+        22: { value_convert: 'default' }
+      }
+    }, { ...lamp('sem-local'), support_local: false, local_strategy: { 20: { status_code: 'switch_led' } } }]
+  })
+  const [local, remote] = await new TuyaSharing(session(), () => {}).listDevices()
+  assert.deepEqual(local.local, { dps: { 20: { code: 'switch_led', convert: 'default', valueType: 'Boolean' } } })
+  assert.equal(JSON.stringify(local).includes('chave-privada'), false)
+  assert.equal('local' in remote, false)
+})
+
+test('lista as casas pelo ownerId sem repetir', async (t) => {
+  mockApi(t, () => [{ ownerId: 12 }, { ownerId: '13' }, { ownerId: 12 }])
+  assert.deepEqual(await new TuyaSharing(session(), () => {}).listHomeIds(), ['12', '13'])
+})
+
+test('busca a configuração do MQTT com linkId próprio e valida os campos', async (t) => {
+  const config = {
+    url: 'ssl://m1.tuyaus.com:8883', clientId: 'cliente', username: 'usuario', password: 'senha', expireTime: 7200,
+    topic: { ownerId: { sub: 'cloud/token/in/{ownerId}' }, devId: { sub: 'cloud/token/in/{devId}' } }
+  }
+  let answer = config
+  mockApi(t, ({ path, init, body }) => {
+    assert.equal(path, '/v1.0/m/life/ha/access/config')
+    assert.equal(init.method, 'POST')
+    assert.match(body.linkId, /^home-control\.[0-9a-f-]{36}$/)
+    return answer
+  })
+  const client = new TuyaSharing(session(), () => {})
+  assert.deepEqual(await client.getMqttConfig(), {
+    url: config.url, clientId: 'cliente', username: 'usuario', password: 'senha', expireTime: 7200,
+    ownerTopic: 'cloud/token/in/{ownerId}', deviceTopic: 'cloud/token/in/{devId}'
+  })
+  for (const broken of [{ ...config, password: '' }, { ...config, expireTime: 30 }, { ...config, topic: { ownerId: { sub: 'sem-marcador' }, devId: config.topic.devId } }]) {
+    answer = broken
+    await assert.rejects(client.getMqttConfig(), /tempo real/)
+  }
+})
