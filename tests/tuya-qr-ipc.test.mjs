@@ -42,10 +42,16 @@ async function fixture(t) {
       export const ipcMain = { handle: (channel, handler) => context.handlers.set(channel, handler), on: () => {} }
       export const BrowserWindow = { fromWebContents: () => null }
       export const shell = { openExternal: async () => {} }
+      export const powerMonitor = { on: () => {} }
+      export const Notification = class { static isSupported() { return false } }
     `,
     './drivers/registry': `
       const context = globalThis.__tuyaQrIpc
       export const invalidateDrivers = () => { context.invalidations++ }
+      export const thinqClientFromStore = () => null
+      export const getEnergy = async () => ({ days: [] })
+      export const listScenes = async () => []
+      export const runScene = async () => {}
       export const listAllDevices = async () => ({ devices: [], statuses: [] })
       export const executeCommand = async () => ({})
     `
@@ -167,6 +173,8 @@ test('renovação de driver antigo não ressuscita sessão desconectada ou subst
       export const getTuyaCredentials = () => null
       export const getTuyaRegion = () => 'us'
       export const getTuyaSession = () => context.session
+      export const getThinqMqttCredentials = () => null
+      export const setThinqMqttCredentials = () => {}
       export const setTuyaSession = (session) => { context.session = session; context.writes++ }
     `,
     './tuya/sharing': `

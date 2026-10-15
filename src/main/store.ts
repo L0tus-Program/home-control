@@ -1,10 +1,11 @@
 import { app, safeStorage } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tuyaEndpoint } from '../shared/tuya'
 import type { TuyaSharingSession } from '../shared/tuya'
 import { assertTuyaSharingEndpoint } from './drivers/tuya/sharing'
+import type { ThinqMqttCredentials } from './drivers/thinq/driver'
 
 /**
  * Configuracao em disco, no userData do app.
@@ -25,7 +26,10 @@ interface PersistedConfig {
   tuyaRegion?: string
   /** Tokens de autorização QR cifrados; independentes do token LG. */
   tuyaSession?: string
+  /** Chave e certificado do MQTT da LG, cifrados; valem para o clientId em que foram emitidos. */
+  thinqMqtt?: string
 }
+
 
 export interface TuyaCredentials {
   accessId: string
@@ -34,20 +38,29 @@ export interface TuyaCredentials {
 
 const CONFIG_PATH = () => join(app.getPath('userData'), 'config.json')
 
+/** A ultima leitura falhou por algo que nao e "arquivo ausente" (antivirus, OneDrive). */
+let unreadable = false
+
 function read(): PersistedConfig {
   try {
-    const path = CONFIG_PATH()
-    if (!existsSync(path)) return {}
-    return JSON.parse(readFileSync(path, 'utf8')) as PersistedConfig
-  } catch {
+    const value = JSON.parse(readFileSync(CONFIG_PATH(), 'utf8')) as PersistedConfig
+    unreadable = false
+    return value && typeof value === 'object' ? value : {}
+  } catch (cause) {
+    unreadable = (cause as NodeJS.ErrnoException)?.code !== 'ENOENT'
     return {}
   }
 }
 
+/** Grava num temporario e troca: queda no meio nunca deixa o arquivo pela metade. */
 function write(config: PersistedConfig): void {
+  // Gravar sobre uma leitura que falhou apagaria token, clientId e sessao Tuya.
+  if (unreadable) throw new Error('Não consegui ler as preferências salvas. Tente de novo em instantes.')
   const path = CONFIG_PATH()
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(config, null, 2), 'utf8')
+  const temporary = `${path}.${process.pid}.tmp`
+  writeFileSync(temporary, JSON.stringify(config, null, 2), 'utf8')
+  renameSync(temporary, path)
 }
 
 export function getCountry(): string {
@@ -93,6 +106,8 @@ export function setToken(token: string): void {
   const config = read()
   const trimmed = token.trim()
 
+  // Token novo pode ser de outra conta: o certificado do MQTT e emitido de novo.
+  delete config.thinqMqtt
   if (!trimmed) {
     delete config.thinqToken
     write(config)
@@ -102,6 +117,30 @@ export function setToken(token: string): void {
     throw new SecureStorageUnavailable()
   }
   write({ ...config, thinqToken: safeStorage.encryptString(trimmed).toString('base64') })
+}
+
+export function getThinqMqttCredentials(clientId: string): ThinqMqttCredentials | null {
+  const stored = read().thinqMqtt
+  if (!stored) return null
+  try {
+    const value = JSON.parse(safeStorage.decryptString(Buffer.from(stored, 'base64'))) as ThinqMqttCredentials
+    const valid = value.clientId === clientId && typeof value.privateKeyPem === 'string' && typeof value.certificatePem === 'string' &&
+      Array.isArray(value.subscriptions) && value.subscriptions.every((topic) => typeof topic === 'string')
+    return valid ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** Sem cofre, o certificado so vive na memoria: emitimos outro na proxima abertura. */
+export function setThinqMqttCredentials(credentials: ThinqMqttCredentials | null): void {
+  const config = read()
+  if (!credentials || !safeStorage.isEncryptionAvailable()) {
+    delete config.thinqMqtt
+  } else {
+    config.thinqMqtt = safeStorage.encryptString(JSON.stringify(credentials)).toString('base64')
+  }
+  write(config)
 }
 
 // ── Tuya Cloud ──────────────────────────────────────────────────────────────

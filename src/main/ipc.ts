@@ -1,8 +1,10 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DriverStatus, Result } from '../shared/types'
-import { executeCommand, invalidateDrivers, listAllDevices } from './drivers/registry'
+import type { AppSettings, Command, Device, DriverStatus, EnergyReport, RealtimeStatus, Result, Scene } from '../shared/types'
+import { executeCommand, getEnergy, invalidateDrivers, listAllDevices, listScenes, runScene, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
+import { realtimeSettled, realtimeStatuses, waitForDeviceState } from './realtime/service'
+import { publicDevice } from '../shared/devices'
 import { TuyaCloud } from './drivers/tuya/cloud'
 import { TuyaLogin } from './drivers/tuya/login'
 import { tuyaEndpoint } from '../shared/tuya'
@@ -62,13 +64,22 @@ export function registerIpc(): void {
   ipcMain.handle(
     'settings:save-thinq',
     (_event, input: { token?: string; country?: string }): Promise<Result<AppSettings>> =>
-      guard(() => {
+      guard(async () => {
+        // Cliente capturado antes: depois de apagar o token nao ha como desfazer o registro.
+        const leaving = input.token === '' ? thinqClientFromStore() : null
         if (typeof input.country === 'string' && input.country.trim()) {
           setCountry(input.country)
         }
         // String vazia e um pedido explicito de apagar o token.
         if (typeof input.token === 'string') setToken(input.token)
         invalidateDrivers()
+        if (leaving) {
+          // Cortesia com a LG, so depois de o tempo real antigo parar de reconectar.
+          await realtimeSettled()
+          let timer: ReturnType<typeof setTimeout> | undefined
+          await Promise.race([leaving.unregisterClient().catch(() => undefined), new Promise((resolve) => { timer = setTimeout(resolve, 3000) })])
+          clearTimeout(timer)
+        }
         return currentSettings()
       })
   )
@@ -117,8 +128,29 @@ export function registerIpc(): void {
       _event,
       input: { driverId: string; deviceId: string; command: Command }
     ): Promise<Result<Device>> =>
-      guard(() => executeCommand(input.driverId, input.deviceId, input.command))
+      guard(async () => publicDevice(await executeCommand(input.driverId, input.deviceId, input.command, waitForDeviceState)))
   )
+
+  ipcMain.handle(
+    'devices:energy',
+    (_event, input: { driverId?: unknown; deviceId?: unknown }): Promise<Result<EnergyReport>> =>
+      guard(() => {
+        if (typeof input?.driverId !== 'string' || typeof input?.deviceId !== 'string') throw new Error('Aparelho invalido.')
+        return getEnergy(input.driverId, input.deviceId)
+      })
+  )
+
+  ipcMain.handle('scenes:list', (): Promise<Result<Scene[]>> => guard(listScenes))
+  ipcMain.handle(
+    'scenes:run',
+    (_event, input: { driverId?: unknown; sceneId?: unknown }): Promise<Result<void>> =>
+      guard(() => {
+        if (typeof input?.driverId !== 'string' || typeof input?.sceneId !== 'string' || input.sceneId.length > 160) throw new Error('Cena invalida.')
+        return runScene(input.driverId, input.sceneId)
+      })
+  )
+
+  ipcMain.handle('realtime:status', (): Promise<Result<Record<string, RealtimeStatus>>> => guard(realtimeStatuses))
 
   // O layout chega do renderer como dado nao confiavel; o store valida tudo.
   ipcMain.handle('home-layout:get', (): Promise<Result<HomeLayout>> => guard(loadHomeLayout))

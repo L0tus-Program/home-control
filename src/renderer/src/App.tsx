@@ -3,6 +3,7 @@ import { deviceKey } from '../../shared/devices'
 import { createRoom, findRoom } from '../../shared/home'
 import type { AppSettings, DriverStatus } from '../../shared/types'
 import { DeviceCard } from './components/DeviceCard'
+import { ScenesPanel } from './components/ScenesPanel'
 import { RefreshIcon, SettingsIcon } from './components/Icons'
 import { SettingsModal, type Integration } from './components/SettingsModal'
 import { Sidebar, type AppSection } from './components/Sidebar'
@@ -31,6 +32,8 @@ export function App(): React.JSX.Element {
   const [selectedSection, setSelectedSection] = useState<AppSection>('rooms')
   const [showSettings, setShowSettings] = useState(false)
   const [revision, setRevision] = useState(0)
+  // "Atualizar" tambem rele as cenas do app da fabricante.
+  const [sceneReload, setSceneReload] = useState(0)
   const [dismissed, setDismissed] = useState<string | null>(null)
   const initialSelection = useRef(false)
   const isTuya = selectedIntegration === 'tuya'
@@ -38,7 +41,7 @@ export function App(): React.JSX.Element {
   const driverId = isTuya ? 'tuya' : 'thinq'
   const anyConnected = !!(settings?.tuya.hasCredentials || settings?.thinq.hasToken)
   const connected = !!(isTuya ? settings?.tuya.hasCredentials : settings?.thinq.hasToken)
-  const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send } = useDevices(anyConnected, revision)
+  const { devices, statuses, loading, pending, error, refresh, refreshIfStale, send, notices, dismissNotice } = useDevices(anyConnected, revision)
   const [editingRoom, setEditingRoom] = useState(false)
   const [showNewRoom, setShowNewRoom] = useState(false)
   const [roomChoice, setRoomChoice] = useState<string | null>(null)
@@ -126,6 +129,16 @@ export function App(): React.JSX.Element {
   return (
     <>
       <div className="aurora" aria-hidden="true"><span /><span /><span /></div>
+      {notices.length > 0 && (
+        <div className="notices" role="status" aria-live="polite">
+          {notices.map((notice) => (
+            <div key={notice.id} className="notice">
+              <span><strong>{notice.title}</strong> · {notice.message}</span>
+              <button type="button" aria-label="Dispensar aviso" onClick={() => dismissNotice(notice.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="shell">
         <TitleBar />
         <div className="body">
@@ -161,7 +174,7 @@ export function App(): React.JSX.Element {
                   </div>
                   {connected && (
                     <button type="button" className="btn btn--ghost" disabled={loading}
-                      onClick={() => { setDismissed(null); void refresh(driverId) }}>
+                      onClick={() => { setDismissed(null); setSceneReload((n) => n + 1); void refresh(driverId) }}>
                       <RefreshIcon />{loading ? 'Atualizando…' : 'Atualizar'}
                     </button>
                   )}
@@ -210,6 +223,7 @@ export function App(): React.JSX.Element {
                     ))}
                   </div>
                 )}
+                {isTuya && connected && <ScenesPanel driverId="tuya" reload={revision + sceneReload} />}
               </>
             )}
           </main>

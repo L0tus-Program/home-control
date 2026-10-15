@@ -38,11 +38,17 @@ async function fixture(t) {
         on: () => {}
       }
       export const shell = { openExternal: async () => {} }
+      export const powerMonitor = { on: () => {} }
+      export const Notification = class { static isSupported() { return false } }
       export const BrowserWindow = { fromWebContents: () => null }
     `,
     './drivers/registry': `
       const fixture = globalThis.__tuyaIpcFixture
       export const invalidateDrivers = () => { fixture.invalidations++ }
+      export const thinqClientFromStore = () => null
+      export const getEnergy = async () => ({ days: [] })
+      export const listScenes = async () => []
+      export const runScene = async () => {}
       export const listAllDevices = async (driverId) => {
         fixture.listCalls.push(driverId)
         return { devices: [], statuses: [] }

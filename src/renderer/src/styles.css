@@ -2279,3 +2279,188 @@ input {
     animation: none;
   }
 }
+
+/* Timer programado: texto e Cancelar na mesma linha. */
+.timer__active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timer__active button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.timer__active button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Avisos dos aparelhos: acima de tudo, inclusive dos modais (120). */
+.notices {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 40px));
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 200, 255, 0.35);
+  background: rgba(14, 18, 28, 0.96);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.notice button {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Consumo de energia no modal do aparelho. */
+.energy__totals {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.energy__days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  height: 96px;
+  align-items: end;
+}
+
+.energy__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.energy__bar {
+  width: 100%;
+  max-width: 22px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #5ec8ff, rgba(94, 200, 255, 0.35));
+}
+
+/* Cenas do app da fabricante, abaixo dos aparelhos. */
+.scenes {
+  margin-top: 28px;
+}
+
+.scenes__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.scenes__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 150px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene:hover:not(:disabled) {
+  border-color: rgba(94, 200, 255, 0.45);
+}
+
+.scene:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scene__name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.scene__state {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Prazo livre do timer. */
+.timer__custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timer__custom input {
+  width: 110px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.timer__custom button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.timer__custom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

@@ -1,6 +1,7 @@
 import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
+import { DeviceExtras } from './DeviceExtras'
 import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
@@ -67,6 +68,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
   const fans = capability(device, 'fan')
   const brightness = capability(device, 'brightness')
   const hasColor = capability(device, 'color') !== undefined
+  const hasColorTemperature = capability(device, 'colorTemperature') !== undefined
   const controllable = device.capabilities.length > 0
 
   const className = [
@@ -126,11 +128,12 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
         />
       )}
 
-      {(brightness || hasColor) && (
+      {(brightness || hasColor || hasColorTemperature) && (
         <LightControls
           brightness={brightness}
           hasColor={hasColor}
-          value={{ brightness: state.brightness, color: state.color }}
+          hasColorTemperature={hasColorTemperature}
+          value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature, mode: state.mode }}
           disabled={offline || !state.power || busy}
           onCommand={onCommand}
         />
@@ -158,7 +161,9 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
         />
       )}
 
-      {(state.currentTemperature !== undefined || state.humidity !== undefined) && (
+      <DeviceExtras device={device} disabled={offline || busy} onCommand={onCommand} />
+
+      {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality?.pm25 !== undefined) && (
         <div className="readings">
           {state.currentTemperature !== undefined && (
             <div>
@@ -170,6 +175,12 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
             <div>
               <div className="reading__label">Umidade</div>
               <div className="reading__value">{Math.round(state.humidity)}%</div>
+            </div>
+          )}
+          {state.airQuality?.pm25 !== undefined && (
+            <div>
+              <div className="reading__label">PM2.5</div>
+              <div className="reading__value">{Math.round(state.airQuality.pm25)}</div>
             </div>
           )}
         </div>

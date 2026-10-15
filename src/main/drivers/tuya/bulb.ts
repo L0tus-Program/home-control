@@ -48,6 +48,24 @@ function rawToPercent(raw: number, range: Range): number {
   return clamp(Math.round(1 + ((raw - range.min) / (range.max - range.min)) * 99), 1, 100)
 }
 
+/** Faixa de `temp_value(_v2)`: a declarada nas funções, ou a padrão de cada versão. */
+function tempRange(code: string, functions: TuyaFunction[]): Range {
+  const fallback = code.endsWith('_v2') ? { min: 0, max: 1000, step: 1 } : { min: 0, max: 255, step: 1 }
+  const spec = safeJson(functions.find((item) => item.code === code)?.values) as Partial<Range> | null
+  if (!spec || typeof spec.min !== 'number' || typeof spec.max !== 'number' || !Number.isFinite(spec.min) || !Number.isFinite(spec.max) || spec.max <= spec.min) return fallback
+  return { min: spec.min, max: spec.max, step: typeof spec.step === 'number' && spec.step > 0 && Number.isFinite(spec.step) ? spec.step : 1 }
+}
+
+/** Tuya: 0 e o branco mais quente e o maximo, o mais frio. */
+function tempToPercent(raw: number, range: Range): number {
+  return clamp(Math.round(((raw - range.min) / (range.max - range.min)) * 100), 0, 100)
+}
+
+function percentToTemp(percent: number, range: Range): number {
+  const raw = range.min + (clamp(percent, 0, 100) / 100) * (range.max - range.min)
+  return Math.min(range.max, range.min + Math.round((raw - range.min) / range.step) * range.step)
+}
+
 export function readState(status: TuyaStatusItem[], online: boolean, functions: TuyaFunction[] = []): DeviceState {
   const map = statusMap(status)
   const brightCode = pick(status, functions, 'bright_value_v2', 'bright_value')
@@ -61,7 +79,62 @@ export function readState(status: TuyaStatusItem[], online: boolean, functions: 
       ? rawToPercent(rawBright, brightnessRange(brightCode, functions)) : undefined
   const color = hsv && colourCode && mode !== 'white'
     ? { hue: clamp(hsv.h, 0, 359), saturation: clamp(Math.round(hsv.s / colorMax(colourCode) * 100), 0, 100) } : undefined
-  return { online, power: map.get('switch_led') === true, brightness, color, mode }
+  const tempCode = pick(status, functions, 'temp_value_v2', 'temp_value')
+  const rawTemp = tempCode ? map.get(tempCode) : undefined
+  const colorTemperature = typeof rawTemp === 'number' && Number.isFinite(rawTemp) && tempCode
+    ? tempToPercent(rawTemp, tempRange(tempCode, functions)) : undefined
+  const power = map.get('switch_led') === true
+  return { online, power, brightness, color, mode, ...(colorTemperature === undefined ? {} : { colorTemperature }), ...readCountdown(status, power) }
+}
+
+const COUNTDOWN = 'countdown_1'
+/** Padrao Tuya para `countdown_1`: segundos, ate 24 h. */
+const COUNTDOWN_FALLBACK_MAX = 86_400
+
+function countdownMax(functions: TuyaFunction[]): number {
+  const spec = safeJson(functions.find((item) => item.code === COUNTDOWN)?.values) as { max?: unknown } | null
+  return typeof spec?.max === 'number' && Number.isFinite(spec.max) && spec.max > 0 ? spec.max : COUNTDOWN_FALLBACK_MAX
+}
+
+export function hasCountdown(status: TuyaStatusItem[], functions: TuyaFunction[] = []): boolean {
+  return Boolean(pick(status, functions, COUNTDOWN))
+}
+
+export function countdownMaxMinutes(functions: TuyaFunction[]): number {
+  return Math.floor(countdownMax(functions) / 60)
+}
+
+/**
+ * O contador inverte a energia quando zera: acesa, apaga; apagada, acende.
+ * Por isso o timer em andamento e de "desligar" ou de "ligar" conforme o estado.
+ */
+export function readCountdown(status: TuyaStatusItem[], power: boolean): Pick<DeviceState, 'timer'> {
+  const seconds = statusMap(status).get(COUNTDOWN)
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return {}
+  return { timer: { [power ? 'off' : 'on']: Math.ceil(seconds / 60) } }
+}
+
+export function countdownCommand(minutes: number | null, functions: TuyaFunction[] = []): TuyaCommand {
+  if (minutes === null) return { code: COUNTDOWN, value: 0 }
+  const seconds = Math.round(minutes) * 60
+  if (!Number.isFinite(seconds) || seconds < 60 || seconds > countdownMax(functions)) throw new DriverError('Prazo de timer inválido.')
+  return { code: COUNTDOWN, value: seconds }
+}
+
+/** O tom so vale no modo branco: muda para ele se a lampada estiver em cor. */
+export function colorTemperatureCommands(status: TuyaStatusItem[], percent: number, functions: TuyaFunction[] = []): TuyaCommand[] {
+  const code = pick(status, functions, 'temp_value_v2', 'temp_value')
+  if (!code) throw new DriverError('Esta lâmpada não permite ajustar o tom do branco.')
+  const commands: TuyaCommand[] = []
+  if (pick(status, functions, 'work_mode') && statusMap(status).get('work_mode') !== 'white') {
+    commands.push({ code: 'work_mode', value: 'white' })
+    // Em cor o brilho e o V da cor; no branco e o bright_value. Leva o atual junto para nao pular.
+    const brightCode = pick(status, functions, 'bright_value_v2', 'bright_value')
+    const brightness = readState(status, true, functions).brightness
+    if (brightCode && brightness !== undefined) commands.push({ code: brightCode, value: percentToRaw(brightness, brightnessRange(brightCode, functions)) })
+  }
+  commands.push({ code, value: percentToTemp(percent, tempRange(code, functions)) })
+  return commands
 }
 
 export function powerCommand(on: boolean): TuyaCommand {
@@ -100,10 +173,11 @@ export function isControllableBulb(status: TuyaStatusItem[], functions: TuyaFunc
   return Boolean(pick(status, functions, 'switch_led'))
 }
 
-export function bulbCapabilities(status: TuyaStatusItem[], functions: TuyaFunction[] = []): { brightness: boolean; color: boolean } {
+export function bulbCapabilities(status: TuyaStatusItem[], functions: TuyaFunction[] = []): { brightness: boolean; color: boolean; colorTemperature: boolean } {
   return {
     brightness: Boolean(pick(status, functions, 'bright_value_v2', 'bright_value')),
-    color: Boolean(pick(status, functions, 'colour_data_v2', 'colour_data'))
+    color: Boolean(pick(status, functions, 'colour_data_v2', 'colour_data')),
+    colorTemperature: Boolean(pick(status, functions, 'temp_value_v2', 'temp_value'))
   }
 }
 

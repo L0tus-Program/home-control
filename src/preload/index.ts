@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DeviceCandidate, HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DriverStatus, Result, TuyaQrCheck } from '../shared/types'
+import type { AppSettings, Command, Device, DeviceEventBatch, DriverStatus, EnergyReport, RealtimeStatus, Result, Scene, TuyaQrCheck } from '../shared/types'
 import type { TuyaQrCode } from '../shared/tuya'
 
 /**
@@ -32,6 +32,29 @@ const api = {
     deviceId: string
     command: Command
   }): Promise<Result<Device>> => ipcRenderer.invoke('devices:command', input),
+
+  /** Eventos de tempo real ja traduzidos. Devolve a funcao que cancela a escuta. */
+  onDeviceEvents: (listener: (batch: DeviceEventBatch) => void): (() => void) => {
+    const handler = (_event: unknown, batch: DeviceEventBatch): void => listener(batch)
+    ipcRenderer.on('devices:events', handler)
+    return () => { ipcRenderer.removeListener('devices:events', handler) }
+  },
+
+  getEnergy: (driverId: string, deviceId: string): Promise<Result<EnergyReport>> =>
+    ipcRenderer.invoke('devices:energy', { driverId, deviceId }),
+
+  listScenes: (): Promise<Result<Scene[]>> => ipcRenderer.invoke('scenes:list'),
+
+  runScene: (driverId: string, sceneId: string): Promise<Result<void>> =>
+    ipcRenderer.invoke('scenes:run', { driverId, sceneId }),
+
+  getRealtimeStatus: (): Promise<Result<Record<string, RealtimeStatus>>> => ipcRenderer.invoke('realtime:status'),
+
+  onRealtimeStatus: (listener: (statuses: Record<string, RealtimeStatus>) => void): (() => void) => {
+    const handler = (_event: unknown, statuses: Record<string, RealtimeStatus>): void => listener(statuses)
+    ipcRenderer.on('realtime:status', handler)
+    return () => { ipcRenderer.removeListener('realtime:status', handler) }
+  },
 
   getHomeLayout: (): Promise<Result<HomeLayout>> => ipcRenderer.invoke('home-layout:get'),
 

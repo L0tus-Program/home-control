@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
+import { DeviceExtras } from './DeviceExtras'
+import { EnergyPanel } from './EnergyPanel'
 import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
@@ -46,6 +48,16 @@ function Segmented({ label, options, active, disabled, format, onPick }: Segment
   )
 }
 
+/** O que resta do filtro, quando da para saber; senao, as horas de uso. */
+export function filterReading(filter: Device['state']['filter']): string | undefined {
+  if (!filter) return undefined
+  if (filter.remainingPercent !== undefined) return `${Math.round(filter.remainingPercent)}%`
+  if (filter.lifetimeHours !== undefined && filter.usedHours !== undefined) {
+    return `${Math.max(0, Math.round(100 - (filter.usedHours / filter.lifetimeHours) * 100))}%`
+  }
+  return filter.usedHours !== undefined ? `${Math.round(filter.usedHours)} h de uso` : undefined
+}
+
 export function DeviceControlModal({ device, busy, onClose, onCommand }: Props): React.JSX.Element {
   const { state } = device
   const offline = device.driverId === 'tuya' && !state.online
@@ -55,6 +67,7 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
   const fans = capability(device, 'fan')
   const brightness = capability(device, 'brightness')
   const hasColor = capability(device, 'color') !== undefined
+  const hasColorTemperature = capability(device, 'colorTemperature') !== undefined
   const controllable = device.capabilities.length > 0
   const disabled = offline || busy
 
@@ -107,9 +120,10 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
             currentTemperature={state.currentTemperature} onChange={(value) => onCommand({ type: 'temperature', value })} />
         )}
 
-        {(brightness || hasColor) && (
+        {(brightness || hasColor || hasColorTemperature) && (
           <LightControls brightness={brightness} hasColor={hasColor}
-            value={{ brightness: state.brightness, color: state.color }} disabled={disabled || !state.power}
+          hasColorTemperature={hasColorTemperature}
+            value={{ brightness: state.brightness, color: state.color, colorTemperature: state.colorTemperature, mode: state.mode }} disabled={disabled || !state.power}
             onCommand={onCommand} />
         )}
 
@@ -123,10 +137,18 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
             format={fanLabel} onPick={(value) => onCommand({ type: 'fan', value })} />
         )}
 
-        {(state.currentTemperature !== undefined || state.humidity !== undefined) && (
+        <DeviceExtras device={device} disabled={disabled} onCommand={onCommand} />
+
+        <EnergyPanel device={device} />
+
+        {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality || state.filter) && (
           <div className="readings">
             {state.currentTemperature !== undefined && <div><div className="reading__label">Ambiente</div><div className="reading__value">{Math.round(state.currentTemperature)}°C</div></div>}
             {state.humidity !== undefined && <div><div className="reading__label">Umidade</div><div className="reading__value">{Math.round(state.humidity)}%</div></div>}
+            {state.airQuality?.pm1 !== undefined && <div><div className="reading__label">PM1</div><div className="reading__value">{Math.round(state.airQuality.pm1)}</div></div>}
+            {state.airQuality?.pm25 !== undefined && <div><div className="reading__label">PM2.5</div><div className="reading__value">{Math.round(state.airQuality.pm25)}</div></div>}
+            {state.airQuality?.pm10 !== undefined && <div><div className="reading__label">PM10</div><div className="reading__value">{Math.round(state.airQuality.pm10)}</div></div>}
+            {filterReading(state.filter) && <div><div className="reading__label">Filtro</div><div className="reading__value">{filterReading(state.filter)}</div></div>}
           </div>
         )}
       </section>
