@@ -3,6 +3,7 @@ import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
 import { DeviceExtras } from './DeviceExtras'
+import { EnergyPanel } from './EnergyPanel'
 import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
@@ -137,6 +138,8 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
         )}
 
         <DeviceExtras device={device} disabled={disabled} onCommand={onCommand} />
+
+        <EnergyPanel device={device} />
 
         {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality || state.filter) && (
           <div className="readings">

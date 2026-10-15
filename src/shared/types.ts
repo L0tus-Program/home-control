@@ -26,6 +26,8 @@ export type Capability =
   | { kind: 'option'; key: OptionKey }
   /** `actions`: o que o timer sabe fazer; `maxMinutes`: o maior prazo aceito. */
   | { kind: 'timer'; actions: TimerAction[]; maxMinutes: number }
+  /** O aparelho informa consumo de energia (lido sob demanda). */
+  | { kind: 'energy' }
 
 export type CapabilityKind = Capability['kind']
 
@@ -80,6 +82,14 @@ export type Command =
   | { type: 'option'; key: OptionKey; value: boolean }
   /** `minutes` null cancela o timer. */
   | { type: 'timer'; action: TimerAction; minutes: number | null }
+
+/** Consumo em watt-hora, como a fabricante informa. */
+export interface EnergyReport {
+  /** Ultimos dias, do mais antigo ao mais recente; `date` em AAAA-MM-DD. */
+  days: Array<{ date: string; wh: number }>
+  thisMonthWh?: number
+  lastMonthWh?: number
+}
 
 export interface DriverStatus {
   id: string

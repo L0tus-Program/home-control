@@ -1,5 +1,5 @@
 import type { IClientOptions, MqttClient } from 'mqtt'
-import type { Capability, Command, Device, DeviceState, OptionKey, TimerAction } from '../../../shared/types'
+import type { Capability, Command, Device, DeviceState, EnergyReport, OptionKey, TimerAction } from '../../../shared/types'
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
@@ -58,6 +58,39 @@ interface AcLayout {
   timers: TimerAction[]
   /** O perfil declara avisos (`notification.push`): so entao assinamos. */
   push: boolean
+  /** Lido do perfil de energia, a parte; falso se o aparelho nao informa. */
+  energy?: boolean
+}
+
+const ENERGY_PROPERTY = 'energyUsage'
+/** Consumo muda devagar e cada leitura gasta cota da API: guardamos por um tempo. */
+const ENERGY_CACHE_MS = 30 * 60 * 1000
+/** Leitura incompleta ou com falha: tenta de novo bem antes, sem martelar a API. */
+const ENERGY_RETRY_MS = 2 * 60 * 1000
+/** Perfil de energia que falhou por rede ou cota: nova tentativa depois disso. */
+const ENERGY_PROFILE_RETRY_MS = 10 * 60 * 1000
+/** "Recurso nao existe neste modelo": resposta definitiva, nao falha passageira. */
+const NOT_SUPPORTED_CODES = new Set(['1220', '2201', '1219', '1221'])
+
+const pad = (value: number): string => String(value).padStart(2, '0')
+const ymd = (date: Date): string => `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+const ym = (date: Date): string => `${date.getFullYear()}${pad(date.getMonth() + 1)}`
+
+/** `result.dataList[]` com o valor em `energyUsage` (Wh), como o SDK le. */
+export function energyEntries(response: unknown): Array<{ date?: string; wh: number }> {
+  const body = asRecord(response)
+  const list = asRecord(body.result).dataList ?? body.dataList
+  const items: unknown[] = Array.isArray(list) ? list : []
+  return items.flatMap((item) => {
+    const entry = asRecord(item)
+    // Numero ou texto numerico; `totalEnergy` como reserva se a chave vier com outro nome.
+    const raw = entry[ENERGY_PROPERTY] ?? entry.totalEnergy
+    const wh = typeof raw === 'string' && /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw
+    if (typeof wh !== 'number' || !Number.isFinite(wh) || wh < 0) return []
+    const day = [entry.usedDate, entry.date].find((value): value is string => typeof value === 'string' && /^\d{6,8}$/.test(value))
+    const date = day && day.length === 8 ? `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}` : undefined
+    return [{ ...(date ? { date } : {}), wh }]
+  })
 }
 
 /** A LG programa timers relativos em horas e minutos; 24 h cobre o uso comum. */
@@ -312,6 +345,7 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   if (layout.modes.length > 0) capabilities.push({ kind: 'mode', options: layout.modes })
   if (layout.fanOptions.length > 0) capabilities.push({ kind: 'fan', options: layout.fanOptions })
   for (const key of layout.options) capabilities.push({ kind: 'option', key })
+  if (layout.energy === true) capabilities.push({ kind: 'energy' })
   if (layout.timers.length > 0) capabilities.push({ kind: 'timer', actions: layout.timers, maxMinutes: LG_TIMER_MAX_MINUTES })
   return capabilities
 }
@@ -364,6 +398,9 @@ export class ThinqDriver implements Driver {
 
   /** Perfis quase nunca mudam; buscar a cada refresh so queima cota da API. */
   private readonly layouts = new Map<string, AcLayout>()
+  /** Por aparelho: a leitura (em andamento ou pronta), o dia a que se refere e ate quando vale. */
+  private readonly energy = new Map<string, { day: string; until: number; report: Promise<EnergyReport> }>()
+  private readonly energyProfileTried = new Map<string, number>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
   private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number }>()
   /** Contador que so cresce: a protecao contra leitura atrasada sobrevive a remocoes do cache. */
@@ -456,10 +493,75 @@ export class ThinqDriver implements Driver {
 
   private async layoutFor(deviceId: string): Promise<AcLayout> {
     const cached = this.layouts.get(deviceId)
-    if (cached) return cached
-    const layout = readLayout(await this.requireClient().getProfile(deviceId))
-    this.layouts.set(deviceId, layout)
+    const layout = cached ?? readLayout(await this.requireClient().getProfile(deviceId))
+    if (!cached) this.layouts.set(deviceId, layout)
+    await this.probeEnergy(deviceId, layout)
     return layout
+  }
+
+  /**
+   * Perfil de energia a parte. Resposta sem `energyUsage` ou "nao suportado" e
+   * definitivo; falha de rede ou cota deixa indefinido e tenta de novo depois.
+   */
+  private async probeEnergy(deviceId: string, layout: AcLayout): Promise<void> {
+    if (layout.energy !== undefined) return
+    const tried = this.energyProfileTried.get(deviceId)
+    if (tried !== undefined && Date.now() - tried < ENERGY_PROFILE_RETRY_MS) return
+    this.energyProfileTried.set(deviceId, Date.now())
+    try {
+      const response = asRecord(await this.requireClient().getEnergyProfile(deviceId))
+      const properties = asRecord(response.result ?? response).property
+      layout.energy = Array.isArray(properties) ? properties.includes(ENERGY_PROPERTY) : ENERGY_PROPERTY in asRecord(properties)
+    } catch (cause) {
+      if (NOT_SUPPORTED_CODES.has(errorCode(cause))) layout.energy = false
+    }
+  }
+
+  /** Ultimos 7 dias, este mes e o anterior, em Wh. Uma leitura por vez por aparelho. */
+  getEnergy(deviceId: string): Promise<EnergyReport> {
+    // So aparelhos ja listados: o id vem do renderer e vira caminho de requisicao autenticada.
+    if (!this.layouts.has(deviceId) && !this.known.has(deviceId)) {
+      return Promise.reject(new DriverError('Aparelho nao encontrado na conta LG.'))
+    }
+    const today = ymd(new Date())
+    const cached = this.energy.get(deviceId)
+    if (cached && cached.day === today && Date.now() < cached.until) return cached.report
+    const report = this.readEnergy(deviceId)
+    const entry = { day: today, until: Date.now() + ENERGY_CACHE_MS, report }
+    this.energy.set(deviceId, entry)
+    // Falha ou leitura incompleta valem pouco tempo no cache.
+    report.then((value) => {
+      if (value.thisMonthWh === undefined || value.lastMonthWh === undefined) entry.until = Date.now() + ENERGY_RETRY_MS
+    }, () => { entry.until = Date.now() + ENERGY_RETRY_MS })
+    return report
+  }
+
+  private async readEnergy(deviceId: string): Promise<EnergyReport> {
+    const client = this.requireClient()
+    const layout = await this.layoutFor(deviceId)
+    if (layout.energy === false) throw new DriverError('Este aparelho nao informa o consumo de energia.')
+    if (layout.energy === undefined) throw new DriverError('Nao consegui ler o consumo agora. Tente de novo em instantes.')
+    const today = new Date()
+    const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const month = (date: Date): Promise<number | undefined> =>
+      client.getEnergyUsage(deviceId, ENERGY_PROPERTY, 'MONTHLY', ym(date), ym(date))
+        .then((response) => {
+          const entries = energyEntries(response)
+          return entries.length > 0 ? entries.reduce((sum, entry) => sum + entry.wh, 0) : undefined
+        }, () => undefined)
+    const [daily, thisMonthWh, lastMonthWh] = await Promise.all([
+      client.getEnergyUsage(deviceId, ENERGY_PROPERTY, 'DAILY', ymd(weekAgo), ymd(today)).then(energyEntries),
+      month(today),
+      month(lastMonth)
+    ])
+    const days = new Map<string, number>()
+    for (const entry of daily) if (entry.date) days.set(entry.date, entry.wh)
+    return {
+      days: [...days].map(([date, wh]) => ({ date, wh })).sort((x, y) => x.date.localeCompare(y.date)),
+      ...(thisMonthWh === undefined ? {} : { thisMonthWh }),
+      ...(lastMonthWh === undefined ? {} : { lastMonthWh })
+    }
   }
 
   async execute(deviceId: string, command: Command): Promise<void> {

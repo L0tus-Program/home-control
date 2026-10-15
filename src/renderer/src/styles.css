@@ -2343,3 +2343,37 @@ input {
   cursor: pointer;
   font: inherit;
 }
+
+/* Consumo de energia no modal do aparelho. */
+.energy__totals {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.energy__days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  height: 96px;
+  align-items: end;
+}
+
+.energy__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.energy__bar {
+  width: 100%;
+  max-width: 22px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #5ec8ff, rgba(94, 200, 255, 0.35));
+}

@@ -121,18 +121,29 @@ export class ThinqClient {
   }
 
   getProfile(deviceId: string): Promise<Record<string, unknown>> {
-    return this.request('GET', `devices/${deviceId}/profile`)
+    return this.request('GET', `devices/${encodeURIComponent(deviceId)}/profile`)
   }
 
   getState(deviceId: string): Promise<Record<string, unknown>> {
-    return this.request('GET', `devices/${deviceId}/state`)
+    return this.request('GET', `devices/${encodeURIComponent(deviceId)}/state`)
   }
 
   control(deviceId: string, payload: unknown): Promise<unknown> {
-    return this.request('POST', `devices/${deviceId}/control`, {
+    return this.request('POST', `devices/${encodeURIComponent(deviceId)}/control`, {
       body: payload,
       extraHeaders: { 'x-conditional-control': 'true' }
     })
+  }
+
+  /** Propriedades de energia que o aparelho informa (ex.: `energyUsage`). */
+  getEnergyProfile(deviceId: string): Promise<Record<string, unknown>> {
+    return this.request('GET', `devices/energy/${encodeURIComponent(deviceId)}/profile`)
+  }
+
+  /** `period` DAILY usa datas AAAAMMDD; MONTHLY, AAAAMM (como o SDK `thinqconnect`). */
+  getEnergyUsage(deviceId: string, property: string, period: 'DAILY' | 'MONTHLY', start: string, end: string): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams({ property, period, startDate: start, endDate: end })
+    return this.request('GET', `devices/energy/${encodeURIComponent(deviceId)}/usage?${query}`)
   }
 
   // ── Tempo real (MQTT) ─────────────────────────────────────────────────────

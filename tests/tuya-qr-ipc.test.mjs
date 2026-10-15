@@ -49,6 +49,7 @@ async function fixture(t) {
       const context = globalThis.__tuyaQrIpc
       export const invalidateDrivers = () => { context.invalidations++ }
       export const thinqClientFromStore = () => null
+      export const getEnergy = async () => ({ days: [] })
       export const listAllDevices = async () => ({ devices: [], statuses: [] })
       export const executeCommand = async () => ({})
     `

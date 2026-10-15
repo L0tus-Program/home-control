@@ -1,4 +1,4 @@
-import type { Command, Device, DriverStatus } from '../../shared/types'
+import type { Command, Device, DriverStatus, EnergyReport } from '../../shared/types'
 import {
   getClientId,
   getCountry,
@@ -178,6 +178,12 @@ export async function executeCommand(
     await new Promise((resolve) => setTimeout(resolve, 900))
   }
   return driver.getDevice(deviceId)
+}
+
+export async function getEnergy(driverId: string, deviceId: string): Promise<EnergyReport> {
+  const driver = driverById(driverId)
+  if (!driver.getEnergy) throw new DriverError('Esta integracao nao informa consumo de energia.')
+  return driver.getEnergy(deviceId)
 }
 
 export { THINQ_DRIVER_ID }
