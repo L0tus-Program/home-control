@@ -83,7 +83,42 @@ export function readState(status: TuyaStatusItem[], online: boolean, functions: 
   const rawTemp = tempCode ? map.get(tempCode) : undefined
   const colorTemperature = typeof rawTemp === 'number' && Number.isFinite(rawTemp) && tempCode
     ? tempToPercent(rawTemp, tempRange(tempCode, functions)) : undefined
-  return { online, power: map.get('switch_led') === true, brightness, color, mode, ...(colorTemperature === undefined ? {} : { colorTemperature }) }
+  const power = map.get('switch_led') === true
+  return { online, power, brightness, color, mode, ...(colorTemperature === undefined ? {} : { colorTemperature }), ...readCountdown(status, power) }
+}
+
+const COUNTDOWN = 'countdown_1'
+/** Padrao Tuya para `countdown_1`: segundos, ate 24 h. */
+const COUNTDOWN_FALLBACK_MAX = 86_400
+
+function countdownMax(functions: TuyaFunction[]): number {
+  const spec = safeJson(functions.find((item) => item.code === COUNTDOWN)?.values) as { max?: unknown } | null
+  return typeof spec?.max === 'number' && Number.isFinite(spec.max) && spec.max > 0 ? spec.max : COUNTDOWN_FALLBACK_MAX
+}
+
+export function hasCountdown(status: TuyaStatusItem[], functions: TuyaFunction[] = []): boolean {
+  return Boolean(pick(status, functions, COUNTDOWN))
+}
+
+export function countdownMaxMinutes(functions: TuyaFunction[]): number {
+  return Math.floor(countdownMax(functions) / 60)
+}
+
+/**
+ * O contador inverte a energia quando zera: acesa, apaga; apagada, acende.
+ * Por isso o timer em andamento e de "desligar" ou de "ligar" conforme o estado.
+ */
+export function readCountdown(status: TuyaStatusItem[], power: boolean): Pick<DeviceState, 'timer'> {
+  const seconds = statusMap(status).get(COUNTDOWN)
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return {}
+  return { timer: { [power ? 'off' : 'on']: Math.ceil(seconds / 60) } }
+}
+
+export function countdownCommand(minutes: number | null, functions: TuyaFunction[] = []): TuyaCommand {
+  if (minutes === null) return { code: COUNTDOWN, value: 0 }
+  const seconds = Math.round(minutes) * 60
+  if (!Number.isFinite(seconds) || seconds < 60 || seconds > countdownMax(functions)) throw new DriverError('Prazo de timer inválido.')
+  return { code: COUNTDOWN, value: seconds }
 }
 
 /** O tom so vale no modo branco: muda para ele se a lampada estiver em cor. */

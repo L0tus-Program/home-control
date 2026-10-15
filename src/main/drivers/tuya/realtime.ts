@@ -53,7 +53,7 @@ export function parseTuyaMessage(raw: unknown): TuyaMessage | null {
 }
 
 /** Codigos que o app desenha. Relatos de outros (cena, musica, timer) nao pedem releitura. */
-const RELEVANT = /^(switch_led|bright_value(_v2)?|colour_data(_v2)?|work_mode|temp_value(_v2)?)$/
+const RELEVANT = /^(switch_led|bright_value(_v2)?|colour_data(_v2)?|work_mode|temp_value(_v2)?|countdown_1)$/
 
 function matchesType(type: string | undefined, value: unknown): boolean {
   switch (type) {

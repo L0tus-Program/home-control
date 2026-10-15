@@ -144,6 +144,12 @@ export function confirmsCommand(command: Command): (device: Device) => boolean {
     case 'brightness': return (device) => near(device.state.brightness, command.value, 1)
     case 'color': return (device) => near(device.state.color?.hue, command.value.hue, 2) && near(device.state.color?.saturation, command.value.saturation, 2)
     case 'option': return (device) => device.state.options?.[command.key] === command.value
+    case 'timer': return (device) => {
+      const left = device.state.timer?.[command.action]
+      if (command.minutes === null) return left === undefined
+      // 0 = programado sem prazo conhecido; senao o prazo com folga de arredondamento.
+      return left !== undefined && (left === 0 || near(left, command.minutes, 2))
+    }
     // O tom guardado tambem aparece em modo cor: so confirma quando a lampada ja esta no branco.
     case 'colorTemperature': return (device) => near(device.state.colorTemperature, command.value, 1) && (device.state.mode === undefined || device.state.mode === 'white')
   }

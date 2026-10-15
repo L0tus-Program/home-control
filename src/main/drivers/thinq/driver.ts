@@ -1,5 +1,5 @@
 import type { IClientOptions, MqttClient } from 'mqtt'
-import type { Capability, Command, Device, DeviceState, OptionKey } from '../../../shared/types'
+import type { Capability, Command, Device, DeviceState, OptionKey, TimerAction } from '../../../shared/types'
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
@@ -54,6 +54,17 @@ interface AcLayout {
   targets: Partial<Record<TargetKey, RangeValues>>
   /** Ajustes liga/desliga que o perfil declara como graváveis. */
   options: OptionKey[]
+  /** Timers relativos (`timer.relativeHourToStart/Stop`) que o modelo aceita. */
+  timers: TimerAction[]
+}
+
+/** A LG programa timers relativos em horas e minutos; 24 h cobre o uso comum. */
+const LG_TIMER_MAX_MINUTES = 24 * 60
+
+/** Campos do recurso `timer` para cada acao. */
+const TIMER_FIELDS: Record<TimerAction, { hour: string; minute: string; flag: string }> = {
+  on: { hour: 'relativeHourToStart', minute: 'relativeMinuteToStart', flag: 'relativeStartTimer' },
+  off: { hour: 'relativeHourToStop', minute: 'relativeMinuteToStop', flag: 'relativeStopTimer' }
 }
 
 /** Onde cada ajuste mora no perfil e no estado da ThinQ Connect. */
@@ -134,13 +145,20 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
     return isWritable(prop) && Boolean(prop?.mode?.includes('r')) && prop?.type === 'boolean' && accepted.includes(true) && accepted.includes(false)
   })
 
+  const timer = asRecord(property.timer)
+  const timers = (['on', 'off'] as TimerAction[]).filter((action) => {
+    const fields = TIMER_FIELDS[action]
+    return isWritable(descriptor(timer[fields.hour])) && isWritable(descriptor(timer[fields.minute]))
+  })
+
   return {
     modes: writableOptions(jobMode),
     fanKey,
     fanOptions: writableOptions(fan),
     tempResource: resource,
     targets,
-    options
+    options,
+    timers
   }
 }
 
@@ -172,8 +190,25 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
         : undefined,
     humidity: numeric(asRecord(raw.airQualitySensor).humidity),
     ...readOptions(raw, layout),
+    ...readTimers(raw, layout),
     ...readAirQuality(asRecord(raw.airQualitySensor))
   }
+}
+
+/** `relativeStopTimer: SET` com horas e minutos restantes; sem os numeros, prazo desconhecido (0). */
+function readTimers(raw: Record<string, unknown>, layout: AcLayout): Pick<DeviceState, 'timer'> {
+  const timer = asRecord(raw.timer)
+  const result: Partial<Record<TimerAction, number>> = {}
+  for (const action of layout.timers) {
+    const fields = TIMER_FIELDS[action]
+    if (timer[fields.flag] !== 'SET') continue
+    const hour = timer[fields.hour]
+    const minute = timer[fields.minute]
+    result[action] = typeof hour === 'number' || typeof minute === 'number'
+      ? Math.max(0, (typeof hour === 'number' ? hour : 0) * 60 + (typeof minute === 'number' ? minute : 0))
+      : 0
+  }
+  return Object.keys(result).length > 0 ? { timer: result } : {}
 }
 
 /** Sensor de particulas: so os valores que o modelo publica. */
@@ -235,6 +270,7 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   if (layout.modes.length > 0) capabilities.push({ kind: 'mode', options: layout.modes })
   if (layout.fanOptions.length > 0) capabilities.push({ kind: 'fan', options: layout.fanOptions })
   for (const key of layout.options) capabilities.push({ kind: 'option', key })
+  if (layout.timers.length > 0) capabilities.push({ kind: 'timer', actions: layout.timers, maxMinutes: LG_TIMER_MAX_MINUTES })
   return capabilities
 }
 
@@ -416,6 +452,19 @@ export class ThinqDriver implements Driver {
         await client.control(deviceId, {
           [layout.tempResource]: { [key]: command.value, unit: 'C' }
         })
+        return
+      }
+
+      case 'timer': {
+        if (!layout.timers.includes(command.action)) throw new DriverError('Este modelo nao tem esse timer.')
+        const fields = TIMER_FIELDS[command.action]
+        if (command.minutes === null) {
+          await client.control(deviceId, { timer: { [fields.flag]: 'UNSET' } })
+          return
+        }
+        const minutes = Math.round(command.minutes)
+        if (!Number.isFinite(minutes) || minutes < 1 || minutes > LG_TIMER_MAX_MINUTES) throw new DriverError('Prazo de timer invalido.')
+        await client.control(deviceId, { timer: { [fields.hour]: Math.floor(minutes / 60), [fields.minute]: minutes % 60 } })
         return
       }
 

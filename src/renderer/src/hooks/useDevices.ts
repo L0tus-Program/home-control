@@ -28,6 +28,13 @@ function applyOptimistic(device: Device, command: Command): Device {
     case 'option':
       state.options = { ...state.options, [command.key]: command.value }
       break
+    case 'timer': {
+      const timer = { ...state.timer }
+      if (command.minutes === null) delete timer[command.action]
+      else timer[command.action] = command.minutes
+      state.timer = Object.keys(timer).length > 0 ? timer : undefined
+      break
+    }
     case 'colorTemperature':
       // O tom do branco tira a lampada do modo cor (quando ela tem modos).
       state.colorTemperature = command.value
