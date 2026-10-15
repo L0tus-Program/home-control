@@ -129,7 +129,9 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
   const options = (Object.keys(OPTION_PATHS) as OptionKey[]).filter((key) => {
     const [resourceName, field] = OPTION_PATHS[key]
     const prop = descriptor(asRecord(property[resourceName])[field])
-    return isWritable(prop) && prop?.type === 'boolean'
+    // Precisa ser legivel (o botao mostra o estado) e aceitar ligar e desligar.
+    const accepted = Array.isArray(prop?.value?.w) ? prop.value.w : []
+    return isWritable(prop) && Boolean(prop?.mode?.includes('r')) && prop?.type === 'boolean' && accepted.includes(true) && accepted.includes(false)
   })
 
   return {

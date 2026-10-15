@@ -163,7 +163,7 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
 
       <DeviceExtras device={device} disabled={offline || !state.power || busy} onCommand={onCommand} />
 
-      {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality) && (
+      {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality?.pm25 !== undefined) && (
         <div className="readings">
           {state.currentTemperature !== undefined && (
             <div>

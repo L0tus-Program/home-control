@@ -56,3 +56,20 @@ test('sensor de particulas: so os valores publicados; modelo sem sensor nao ganh
   assert.deepEqual(device.state.airQuality, { pm25: 12, pm10: 30 })
   assert.equal(device.state.humidity, 55)
 })
+
+test('so entram ajustes legiveis, booleanos e com os dois valores', async () => {
+  const odd = client()
+  odd.getProfile = async () => ({ property: { ...profile.property,
+    powerSave: { powerSaveEnabled: { type: 'boolean', mode: ['w'], value: { w: [true, false] } } },
+    windDirection: { rotateUpDown: rw('boolean', [true]), rotateLeftRight: rw('enum', ['ON', 'OFF']) }
+  } })
+  const [device] = await new ThinqDriver(odd).listDevices()
+  assert.deepEqual(device.capabilities.filter((cap) => cap.kind === 'option'), [])
+})
+
+test('relato parcial do MQTT atualiza so o ajuste que mudou', async () => {
+  const { mergeReport } = await loadSource('src/main/drivers/thinq/realtime.ts')
+  const merged = mergeReport(state, { windDirection: { rotateUpDown: false } })
+  assert.deepEqual(merged.powerSave, { powerSaveEnabled: false })
+  assert.deepEqual(merged.windDirection, { rotateUpDown: false })
+})
