@@ -120,23 +120,41 @@ export async function listAllDevices(onlyDriverId?: string): Promise<{ devices: 
   return { devices, statuses }
 }
 
-/** Com tempo real, quanto esperar o evento que confirma o comando antes de ler. */
-const EVENT_CONFIRM_MS = 3000
+/**
+ * Com tempo real, quanto esperar o evento que confirma o comando antes de ler.
+ * Pouco acima dos 900 ms do caminho sem tempo real: comando que nao muda nada
+ * (ligar o que ja esta ligado) nao gera evento e nao pode travar a tela.
+ */
+const EVENT_CONFIRM_MS = 1500
 
 export interface CommandWaiter {
   wait(timeoutMs: number): Promise<Device | null>
   cancel(): void
 }
 
+const near = (a: number | undefined, b: number, tolerance: number): boolean => a !== undefined && Math.abs(a - b) <= tolerance
+
+/** O estado que confirma o comando: o valor pedido, com folga de arredondamento. */
+export function confirmsCommand(command: Command): (device: Device) => boolean {
+  switch (command.type) {
+    case 'power': return (device) => device.state.power === command.value
+    case 'temperature': return (device) => near(device.state.temperature, command.value, 0.5)
+    case 'mode': return (device) => device.state.mode === command.value
+    case 'fan': return (device) => device.state.fan === command.value
+    case 'brightness': return (device) => near(device.state.brightness, command.value, 1)
+    case 'color': return (device) => near(device.state.color?.hue, command.value.hue, 2) && near(device.state.color?.saturation, command.value.saturation, 2)
+  }
+}
+
 export async function executeCommand(
   driverId: string,
   deviceId: string,
   command: Command,
-  waitForState?: (driverId: string, deviceId: string) => CommandWaiter | null
+  waitForState?: (driverId: string, deviceId: string, matches: (device: Device) => boolean) => CommandWaiter | null
 ): Promise<Device> {
   const driver = driverById(driverId)
   // A espera e registrada antes do envio: o evento pode chegar antes da resposta.
-  const waiter = waitForState?.(driverId, deviceId) ?? null
+  const waiter = waitForState?.(driverId, deviceId, confirmsCommand(command)) ?? null
   try {
     await driver.execute(deviceId, command)
   } catch (cause) {

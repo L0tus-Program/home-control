@@ -176,3 +176,15 @@ test('falha de assinatura nao impede a conexao', async (t) => {
   await until(() => out.statuses.includes('live'))
   assert.equal(broker.clients.length, 1)
 })
+
+test('getDevice com ficha em cache propaga falha de leitura em vez de dizer offline', async () => {
+  let fail = false
+  const client = fakeClient({ getState: async () => { if (fail) throw Object.assign(new Error('Limite de chamadas'), { code: '1306' }); return initialState() } })
+  const driver = new ThinqDriver(client)
+  await driver.listDevices()
+  fail = true
+  await assert.rejects(driver.getDevice('ar'), /Limite/)
+  assert.equal(client.calls.filter((c) => c === 'listDevices').length, 1, 'nao relista a conta')
+  const listed = await driver.listDevices()
+  assert.equal(listed[0].state.online, false, 'a lista continua tolerante')
+})

@@ -14,6 +14,8 @@ export interface HubOutput {
 
 /** Rajadas do MQTT (varios campos mudando juntos) viram uma mensagem so para a UI. */
 const COALESCE_MS = 100
+/** Espera de confirmacao nunca passa disso, mesmo que o comando pendure. */
+const WAITER_MAX_MS = 60_000
 /** Um canal preso nunca pode travar a troca de configuracao. */
 const STEP_TIMEOUT_MS = 5000
 
@@ -40,7 +42,7 @@ export class RealtimeHub {
   private queue = new Map<string, Map<string, DeviceEvent>>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private chain: Promise<void> = Promise.resolve()
-  private waiters = new Map<string, Set<(device: Device) => void>>()
+  private waiters = new Map<string, Set<(device: Device | null) => void>>()
 
   constructor(private readonly output: HubOutput, private readonly coalesceMs = COALESCE_MS) {}
 
@@ -68,32 +70,47 @@ export class RealtimeHub {
   }
 
   /**
-   * Registra a espera antes do comando, para nao perder um evento rapido. Sem
-   * canal ao vivo para o driver, devolve null e o comando confirma por leitura.
+   * Registra a espera antes do comando, para nao perder um evento rapido. So
+   * conta um estado que `matches` aceita (o valor comandado): evento antigo, do
+   * controle remoto ou parcial nao confirma. Sem canal ao vivo, devolve null e o
+   * comando confirma por leitura; se o canal cair, a espera termina na hora.
    */
-  waitForState(driverId: string, deviceId: string): StateWaiter | null {
+  waitForState(driverId: string, deviceId: string, matches: (device: Device) => boolean): StateWaiter | null {
     if (this.statuses[driverId]?.state !== 'live') return null
     const key = `${driverId}:${deviceId}`
     let received: Device | null = null
-    let resolveWait: ((device: Device | null) => void) | null = null
-    const onState = (device: Device): void => {
+    let settle: ((device: Device | null) => void) | null = null
+    // Teto de vida: um `execute` pendurado nao deixa a espera registrada para sempre.
+    const safety = setTimeout(() => { cancel(); settle?.(null) }, WAITER_MAX_MS)
+    const onState = (device: Device | null): void => {
+      if (device === null) { cancel(); settle?.(null); return }
+      if (!matches(device)) return
       received = device
-      resolveWait?.(device)
+      settle?.(device)
     }
     let set = this.waiters.get(key)
     if (!set) this.waiters.set(key, (set = new Set()))
     set.add(onState)
     const cancel = (): void => {
+      clearTimeout(safety)
       set.delete(onState)
       if (set.size === 0 && this.waiters.get(key) === set) this.waiters.delete(key)
     }
     return {
       wait: (timeoutMs) => new Promise<Device | null>((resolve) => {
-        if (received) { cancel(); resolve(received); return }
+        if (received || !set.has(onState)) { cancel(); resolve(received); return }
         const timer = setTimeout(() => { cancel(); resolve(null) }, timeoutMs)
-        resolveWait = (device) => { clearTimeout(timer); cancel(); resolve(device) }
+        settle = (device) => { clearTimeout(timer); cancel(); resolve(device) }
       }),
       cancel
+    }
+  }
+
+  /** Canal do driver caiu ou foi trocado: ninguem espera evento que nao vira. */
+  private releaseWaiters(driverId?: string): void {
+    for (const [key, set] of [...this.waiters]) {
+      if (driverId !== undefined && !key.startsWith(`${driverId}:`)) continue
+      for (const waiter of [...set]) waiter(null)
     }
   }
 
@@ -106,6 +123,7 @@ export class RealtimeHub {
 
   private async swap(drivers: Driver[]): Promise<void> {
     const generation = ++this.generation
+    this.releaseWaiters()
     const previous = this.handles
     this.handles = []
     this.queue.clear()
@@ -136,6 +154,7 @@ export class RealtimeHub {
           try { this.output.status(this.getStatuses()) } catch { /* idem */ }
           // Entre a ultima leitura e o canal ficar ao vivo, eventos podem ter passado.
           if (state === 'live' && was !== 'live') this.enqueue(driver.id, { type: 'refresh' })
+          if (state !== 'live') this.releaseWaiters(driver.id)
         }
       }
       this.handles.push(Promise.resolve().then(() => driver.watch!(listener)).catch((cause) => {

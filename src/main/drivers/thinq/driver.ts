@@ -258,8 +258,9 @@ export class ThinqDriver implements Driver {
   async getDevice(deviceId: string): Promise<Device> {
     const client = this.requireClient()
     // Ficha ja conhecida: so o estado precisa vir da nuvem, sem relistar a conta.
+    // A falha de leitura sobe: "offline e desligado" nao pode passar por confirmacao.
     const cached = this.known.get(deviceId)?.item
-    if (cached) return this.hydrate(cached)
+    if (cached) return this.read(cached)
     const items = (await client.listDevices()) ?? []
     const item = items.find((entry) => entry.deviceId === deviceId)
     if (!item) throw new DriverError('Aparelho nao encontrado na conta LG.')
@@ -292,21 +293,26 @@ export class ThinqDriver implements Driver {
     if (base.kind !== 'air-conditioner') return base
 
     try {
-      const rev = this.known.get(item.deviceId)?.rev ?? 0
-      const layout = await this.layoutFor(item.deviceId)
-      const raw = asRecord(await this.requireClient().getState(item.deviceId))
-      const current = this.known.get(item.deviceId)
-      // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
-      if (current && current.rev !== rev) {
-        current.item = item
-        return this.build(item, layout, current.raw)
-      }
-      this.known.set(item.deviceId, { item, raw, rev, at: Date.now() })
-      return this.build(item, layout, raw)
+      return await this.read(item)
     } catch (cause) {
       // Um aparelho offline nao pode derrubar a lista inteira.
       return { ...base, state: { online: false, power: false } }
     }
+  }
+
+  /** Le o estado do ar; lanca em falha. */
+  private async read(item: ThinqDeviceListItem): Promise<Device> {
+    const rev = this.known.get(item.deviceId)?.rev ?? 0
+    const layout = await this.layoutFor(item.deviceId)
+    const raw = asRecord(await this.requireClient().getState(item.deviceId))
+    const current = this.known.get(item.deviceId)
+    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+    if (current && current.rev !== rev) {
+      current.item = item
+      return this.build(item, layout, current.raw)
+    }
+    this.known.set(item.deviceId, { item, raw, rev, at: Date.now() })
+    return this.build(item, layout, raw)
   }
 
   private async layoutFor(deviceId: string): Promise<AcLayout> {

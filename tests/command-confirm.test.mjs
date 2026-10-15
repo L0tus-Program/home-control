@@ -12,7 +12,7 @@ const fakeDriver = `
     async getDevice(id) { calls.push(['getDevice', id]); return { id, driverId: 'thinq', state: { lido: true } } }
   }
 `
-const { executeCommand } = await loadSource('src/main/drivers/registry.ts', {
+const { executeCommand, confirmsCommand } = await loadSource('src/main/drivers/registry.ts', {
   '../store': `
     export const getToken = () => null
     export const getCountry = () => 'BR'
@@ -48,22 +48,50 @@ test('sem evento no prazo, confirma pela leitura; comando recusado cancela a esp
   assert.equal(cancelled, true)
 })
 
-test('hub entrega o proximo estado do aparelho na hora, mesmo antes do wait; sem canal ao vivo nao espera', async () => {
+test('hub: so o estado com o valor comandado confirma; evento antigo e ignorado', async () => {
   const hub = new RealtimeHub({ events: () => {}, status: () => {} }, 50)
   let listener
   const driver = { id: 'thinq', label: 'LG', isConfigured: () => true, watch: async (l) => { listener = l; return { stop: async () => {} } } }
   await hub.restart([driver])
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(hub.waitForState('thinq', 'ar'), null, 'conectando ainda')
+  const powerOn = confirmsCommand({ type: 'power', value: true })
+  assert.equal(hub.waitForState('thinq', 'ar', powerOn), null, 'conectando ainda')
   listener.status('live')
-  const early = hub.waitForState('thinq', 'ar')
-  listener.event({ type: 'state', device: { id: 'ar', driverId: 'thinq', state: { power: true } } })
-  assert.deepEqual((await early.wait(1000)).state, { power: true })
-  const late = hub.waitForState('thinq', 'ar')
+  const ar = (state) => ({ id: 'ar', driverId: 'thinq', state })
+
+  const early = hub.waitForState('thinq', 'ar', powerOn)
+  listener.event({ type: 'state', device: ar({ power: false }) })
+  listener.event({ type: 'state', device: { id: 'outro', driverId: 'thinq', state: { power: true } } })
+  listener.event({ type: 'state', device: ar({ power: true, temperature: 22 }) })
+  assert.deepEqual((await early.wait(1000)).state, { power: true, temperature: 22 })
+
+  const late = hub.waitForState('thinq', 'ar', confirmsCommand({ type: 'temperature', value: 24 }))
   const pending = late.wait(1000)
-  listener.event({ type: 'state', device: { id: 'outro', driverId: 'thinq', state: {} } })
-  listener.event({ type: 'state', device: { id: 'ar', driverId: 'thinq', state: { power: false } } })
-  assert.deepEqual((await pending).state, { power: false })
-  assert.equal(await hub.waitForState('thinq', 'ar').wait(20), null)
+  listener.event({ type: 'state', device: ar({ power: true, temperature: 23 }) })
+  listener.event({ type: 'state', device: ar({ power: true, temperature: 24 }) })
+  assert.deepEqual((await pending).state, { power: true, temperature: 24 })
+  assert.equal(await hub.waitForState('thinq', 'ar', powerOn).wait(20), null, 'sem evento: cai na leitura')
+
+  // Canal caiu: a espera termina na hora, sem esperar o prazo.
+  const dropped = hub.waitForState('thinq', 'ar', powerOn)
+  const started = Date.now()
+  const result = dropped.wait(5000)
+  listener.status('connecting')
+  assert.equal(await result, null)
+  assert.ok(Date.now() - started < 1000)
+
+  listener.status('live')
+  const onStop = hub.waitForState('thinq', 'ar', powerOn).wait(5000)
   await hub.stop()
+  assert.equal(await onStop, null)
+})
+
+test('predicados de confirmacao por tipo de comando', () => {
+  const device = (state) => ({ id: 'x', driverId: 'tuya', state: { online: true, power: true, ...state } })
+  assert.equal(confirmsCommand({ type: 'brightness', value: 50 })(device({ brightness: 51 })), true)
+  assert.equal(confirmsCommand({ type: 'brightness', value: 50 })(device({ brightness: 60 })), false)
+  assert.equal(confirmsCommand({ type: 'color', value: { hue: 120, saturation: 80 } })(device({ color: { hue: 121, saturation: 79 } })), true)
+  assert.equal(confirmsCommand({ type: 'color', value: { hue: 120, saturation: 80 } })(device({})), false)
+  assert.equal(confirmsCommand({ type: 'mode', value: 'COOL' })(device({ mode: 'HEAT' })), false)
+  assert.equal(confirmsCommand({ type: 'fan', value: 'LOW' })(device({ fan: 'LOW' })), true)
 })

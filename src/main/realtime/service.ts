@@ -1,4 +1,5 @@
 import { BrowserWindow, powerMonitor } from 'electron'
+import { publicDevice } from '../../shared/devices'
 import type { Device, DeviceEvent, DeviceEventBatch, RealtimeStatus } from '../../shared/types'
 import { currentDrivers, onDriversChanged } from '../drivers/registry'
 import { RealtimeHub, type StateWaiter } from './hub'
@@ -13,12 +14,6 @@ function broadcast(channel: string, payload: unknown): void {
       if (!window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send(channel, payload)
     } catch { /* janela fechando */ }
   }
-}
-
-/** So o modelo comum cruza para o renderer, mesmo que um driver anexe mais campos. */
-function publicDevice(device: Device): Device {
-  const { id, driverId, name, model, kind, capabilities, state } = device
-  return { id, driverId, name, ...(model === undefined ? {} : { model }), kind, capabilities, state }
 }
 
 function publicEvent(event: DeviceEvent): DeviceEvent {
@@ -46,8 +41,8 @@ export function startRealtime(): void {
 }
 
 /** Confirmacao de comando pelo evento do aparelho; null sem canal ao vivo. */
-export function waitForDeviceState(driverId: string, deviceId: string): StateWaiter | null {
-  return hub?.waitForState(driverId, deviceId) ?? null
+export function waitForDeviceState(driverId: string, deviceId: string, matches: (device: Device) => boolean): StateWaiter | null {
+  return hub?.waitForState(driverId, deviceId, matches) ?? null
 }
 
 /** Ha canal para fechar antes de sair? Sem canal, o encerramento segue direto. */
