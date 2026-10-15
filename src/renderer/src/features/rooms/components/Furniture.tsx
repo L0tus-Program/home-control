@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { RoundedBox } from '@react-three/drei'
 import { useCanvasTexture } from '../hooks'
-import { BOOKSHELF_SIZE, SOFA_SIZE, type FurnitureAssetId } from '../../../../../shared/home'
+import { BOOKSHELF_SIZE, SOFA_SIZE } from '../../../../../shared/home'
 import type { Vec3 } from '../layout'
 
 const SOFA = {
@@ -52,7 +52,7 @@ interface SofaBlockProps {
  * Um modulo de sofa com base, bracos, encosto e almofadas apoiados uns nos
  * outros. Dois modulos lado a lado formam o L.
  */
-function SofaBlock({ position, width, depth, seats, back = false, armLeft = false, armRight = false }: SofaBlockProps) {
+export function SofaBlock({ position, width, depth, seats, back = false, armLeft = false, armRight = false }: SofaBlockProps) {
   const { arm, legs, baseTop, seatCushion, backCushion } = SOFA
   const left = -width / 2 + (armLeft ? arm.width : 0)
   const right = width / 2 - (armRight ? arm.width : 0)
@@ -111,7 +111,7 @@ function SofaBlock({ position, width, depth, seats, back = false, armLeft = fals
  * Sofa em L com a chaise saindo pela esquerda. A origem e o centro do modulo
  * com encosto, que fica rente a parede.
  */
-function Sofa() {
+export function Sofa() {
   const { width, depth } = SOFA_SIZE
   const chaise = { width: 0.85, length: 1.6 }
   return (
@@ -123,7 +123,7 @@ function Sofa() {
   )
 }
 
-function CoffeeTable() {
+export function CoffeeTable() {
   const height = 0.4
   return (
     <group>
@@ -155,7 +155,7 @@ function CoffeeTable() {
 const BOOK_COLORS = ['#c0392b', '#2980b9', '#27ae60', '#d4a017', '#7d5ba6', '#34495e', '#e67e22']
 
 /** Estante aberta, com livros apoiados nas prateleiras. O fundo fica em -z/2 da peca. */
-function Bookshelf() {
+export function Bookshelf() {
   const { width, height, depth } = BOOKSHELF_SIZE
   const t = 0.04
   const levels = 4
@@ -220,7 +220,7 @@ function Bookshelf() {
 }
 
 /** Planta em vaso. As folhas sao fixas para nao pular a cada render. */
-function Plant() {
+export function Plant() {
   const plantRef = useRef<THREE.Group>(null)
   const potHeight = 0.5
   const leaves = useMemo(
@@ -262,7 +262,7 @@ function Plant() {
   )
 }
 
-function Rug() {
+export function Rug() {
   const rugTexture = useCanvasTexture(512, drawRug, [1.5, 1])
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
@@ -270,13 +270,4 @@ function Rug() {
       <meshStandardMaterial map={rugTexture} roughness={0.95} color="#f0ebe3" />
     </mesh>
   )
-}
-
-/** Moveis do catalogo, desenhados na origem; o RoomItem da posicao e giro. */
-export const FURNITURE: Record<FurnitureAssetId, () => React.JSX.Element> = {
-  'sofa-l': Sofa,
-  'coffee-table': CoffeeTable,
-  bookshelf: Bookshelf,
-  plant: Plant,
-  rug: Rug
 }

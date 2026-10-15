@@ -237,6 +237,7 @@ Já concluído:
 - **Persistência:** `main/home-layout-store.ts` com versão, revisão, validação, escrita atômica, `.bak` e recuperação de arquivo inválido (preservado como `home-layout.invalid-*.json`); IPC `home-layout:get`, `home-layout:save` e `home-layout:place-devices`. Aparelhos novos entram no cômodo base.
 
 - **Modo edição:** arrastar com encaixe de 25 cm (AC só desliza nas paredes), girar 90°, adicionar móveis do catálogo, remover itens, apelidos locais, salvar/cancelar e teclado (setas, R, Delete, Esc). A navegação fica travada até salvar ou cancelar.
+- **Catálogo de móveis** em três grupos: Sala (sofá em L, sofá, poltrona, mesa de centro, rack com TV, estante, planta, tapete), Quarto (camas de casal e de solteiro, criado-mudo, roupeiro, cômoda) e Mesa e trabalho (mesa de jantar, cadeira, escrivaninha, cadeira de escritório). **Restaurar padrão** volta o cômodo ao tamanho e aos móveis originais, mantendo nome, aparelhos e apelidos.
 - **Tamanho da sala:** largura e profundidade de 5–10 m × 4–9 m; os itens acompanham o canto das paredes e o que sobra é trazido para dentro.
 - **Vários cômodos:** Novo cômodo a partir do padrão original, renomear, excluir (exceto o base, aparelhos ficam sem cômodo), mover aparelho entre cômodos com confirmação e lista "Sem cômodo". Aparelho fora da conta continua no lugar, apagado e marcado como indisponível.
 

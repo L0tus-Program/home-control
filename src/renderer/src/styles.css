@@ -2118,3 +2118,16 @@ input {
   color: #ffb3b3;
   font-size: 12.5px;
 }
+
+.room-editor__group {
+  display: grid;
+  gap: 6px;
+}
+
+.room-editor__danger {
+  justify-items: start;
+}
+
+.room-editor__danger .room-editor__confirm {
+  justify-self: stretch;
+}

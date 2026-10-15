@@ -89,10 +89,20 @@ interface Bounds {
   maxZ: number
 }
 
+export type FurnitureCategory = 'sala' | 'quarto' | 'mesa'
+
+export const FURNITURE_CATEGORIES: { id: FurnitureCategory; label: string }[] = [
+  { id: 'sala', label: 'Sala' },
+  { id: 'quarto', label: 'Quarto' },
+  { id: 'mesa', label: 'Mesa e trabalho' }
+]
+
 interface AssetSpec {
   label: string
   attachment: Attachment
   bounds: Bounds
+  /** Grupo na paleta do editor; so moveis. */
+  category?: FurnitureCategory
   /** Presente nos aparelhos: o tipo de Device que o asset representa. */
   deviceKind?: DeviceKind
 }
@@ -112,6 +122,30 @@ export const SOFA_SIZE = { width: 2.4, depth: 0.95, chaiseWidth: 0.85, chaiseLen
 export const BOOKSHELF_SIZE = { width: 1.6, height: 2.0, depth: 0.36 } as const
 
 /**
+ * Medidas dos demais moveis, em metros, com a frente para +z. Os modelos 3D
+ * e as caixas do catalogo saem daqui, para o contorno bater com a peca.
+ */
+export const FURNITURE_SIZES = {
+  sofa: { width: 2.1, depth: 0.92 },
+  armchair: { width: 0.92, depth: 0.86 },
+  bedDouble: { width: 1.6, length: 2.05, headboard: 1.72 },
+  bedSingle: { width: 0.95, length: 2.0, headboard: 1.05 },
+  nightstand: { width: 0.48, depth: 0.4, height: 0.52 },
+  wardrobe: { width: 1.8, depth: 0.6, height: 2.2 },
+  dresser: { width: 1.2, depth: 0.5, height: 0.86 },
+  diningTable: { width: 1.6, depth: 0.9, height: 0.76 },
+  chair: { width: 0.46, depth: 0.5 },
+  desk: { width: 1.4, depth: 0.7, height: 0.75 },
+  officeChair: { width: 0.66, depth: 0.66 },
+  tvStand: { width: 1.8, depth: 0.42, height: 0.48 }
+} as const
+
+const F = FURNITURE_SIZES
+/** Cama com a cabeceira em -z; a cabeceira e um pouco mais larga e grossa. */
+const bedBounds = ({ length, headboard }: { length: number; headboard: number }): Bounds =>
+  ({ minX: -headboard / 2, maxX: headboard / 2, minZ: -length / 2 - 0.06, maxZ: length / 2 })
+
+/**
  * Catalogo local permitido. O layout so referencia estes ids; nada de URLs,
  * modelos arbitrarios ou nomes de componente vindos do arquivo.
  */
@@ -119,13 +153,26 @@ export const ASSET_CATALOG = {
   'sofa-l': {
     label: 'Sofá em L',
     attachment: 'floor',
+    category: 'sala',
     // Origem no centro do modulo com encosto; a chaise avanca pela esquerda.
     bounds: { minX: -SOFA_SIZE.width / 2, maxX: SOFA_SIZE.width / 2, minZ: -SOFA_SIZE.depth / 2, maxZ: SOFA_SIZE.depth / 2 + SOFA_SIZE.chaiseLength }
   },
-  'coffee-table': { label: 'Mesa de centro', attachment: 'floor', bounds: centered(1, 1) },
-  bookshelf: { label: 'Estante', attachment: 'floor', bounds: centered(BOOKSHELF_SIZE.width, BOOKSHELF_SIZE.depth) },
-  plant: { label: 'Planta', attachment: 'floor', bounds: centered(0.56, 0.56) },
-  rug: { label: 'Tapete', attachment: 'floor', bounds: centered(3.6, 2.6) },
+  sofa: { label: 'Sofá', attachment: 'floor', category: 'sala', bounds: centered(F.sofa.width, F.sofa.depth) },
+  armchair: { label: 'Poltrona', attachment: 'floor', category: 'sala', bounds: centered(F.armchair.width, F.armchair.depth) },
+  'coffee-table': { label: 'Mesa de centro', attachment: 'floor', category: 'sala', bounds: centered(1, 1) },
+  'tv-stand': { label: 'Rack com TV', attachment: 'floor', category: 'sala', bounds: centered(F.tvStand.width, F.tvStand.depth) },
+  bookshelf: { label: 'Estante', attachment: 'floor', category: 'sala', bounds: centered(BOOKSHELF_SIZE.width, BOOKSHELF_SIZE.depth) },
+  plant: { label: 'Planta', attachment: 'floor', category: 'sala', bounds: centered(0.56, 0.56) },
+  rug: { label: 'Tapete', attachment: 'floor', category: 'sala', bounds: centered(3.6, 2.6) },
+  'bed-double': { label: 'Cama de casal', attachment: 'floor', category: 'quarto', bounds: bedBounds(F.bedDouble) },
+  'bed-single': { label: 'Cama de solteiro', attachment: 'floor', category: 'quarto', bounds: bedBounds(F.bedSingle) },
+  nightstand: { label: 'Criado-mudo', attachment: 'floor', category: 'quarto', bounds: centered(F.nightstand.width, F.nightstand.depth) },
+  wardrobe: { label: 'Roupeiro', attachment: 'floor', category: 'quarto', bounds: centered(F.wardrobe.width, F.wardrobe.depth) },
+  dresser: { label: 'Cômoda', attachment: 'floor', category: 'quarto', bounds: centered(F.dresser.width, F.dresser.depth) },
+  'dining-table': { label: 'Mesa de jantar', attachment: 'floor', category: 'mesa', bounds: centered(F.diningTable.width, F.diningTable.depth) },
+  chair: { label: 'Cadeira', attachment: 'floor', category: 'mesa', bounds: centered(F.chair.width, F.chair.depth) },
+  desk: { label: 'Escrivaninha', attachment: 'floor', category: 'mesa', bounds: centered(F.desk.width, F.desk.depth) },
+  'office-chair': { label: 'Cadeira de escritório', attachment: 'floor', category: 'mesa', bounds: centered(F.officeChair.width, F.officeChair.depth) },
   'floor-lamp': { label: 'Luminária de piso', attachment: 'floor', bounds: centered(0.8, 0.8), deviceKind: 'light' },
   'wall-ac': { label: 'Ar-condicionado', attachment: 'wall', bounds: centered(AC_HALF_WIDTH * 2, AC_HALF_DEPTH * 2), deviceKind: 'air-conditioner' }
 } as const satisfies Record<string, AssetSpec>
@@ -138,6 +185,10 @@ export type FurnitureAssetId = Exclude<AssetId, DeviceAssetId>
 
 export const FURNITURE_ASSETS = (Object.keys(ASSET_CATALOG) as AssetId[])
   .filter((id): id is FurnitureAssetId => !isDeviceAsset(id))
+
+export function furnitureCategory(assetId: FurnitureAssetId): FurnitureCategory {
+  return (ASSET_CATALOG[assetId] as AssetSpec).category ?? 'sala'
+}
 
 export function isAssetId(value: unknown): value is AssetId {
   return typeof value === 'string' && Object.hasOwn(ASSET_CATALOG, value)
@@ -522,4 +573,23 @@ export function deleteRoom(layout: HomeLayout, roomId: string): HomeLayout {
   }
   if (next.selectedRoomId === roomId) delete next.selectedRoomId
   return next
+}
+
+/**
+ * Volta o comodo ao padrao original: tamanho e moveis da sala padrao. O nome
+ * e os aparelhos ficam; os aparelhos voltam aos pontos padrao, na ordem em
+ * que estavam, com os apelidos.
+ */
+export function resetRoom(layout: HomeLayout, roomId: string): HomeLayout {
+  return mapRoom(layout, roomId, (room) => {
+    const fresh = defaultRoom(room.id, room.name)
+    for (const item of room.items) {
+      if (!item.device) continue
+      const slot = nextSlot(fresh, item.assetId)
+      fresh.items.push(slot
+        ? { ...item, position: slot.position, rotationY: slot.rotationY, scale: 1 }
+        : clampItem(item, fresh.dimensions))
+    }
+    return fresh
+  })
 }

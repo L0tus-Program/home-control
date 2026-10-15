@@ -17,7 +17,7 @@ import type { Device } from '../../../../../shared/types'
 import { useHoverCursor } from '../hooks'
 import { cameraTarget, ROOM, type Vec3 } from '../layout'
 import { Floor } from './Floor'
-import { FURNITURE } from './Furniture'
+import { FURNITURE } from './furnitureRegistry'
 import { LightDevice } from './LightDevice'
 import { ACDevice } from './ACDevice'
 

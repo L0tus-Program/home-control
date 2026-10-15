@@ -2,14 +2,17 @@ import { useState } from 'react'
 import {
   ASSET_CATALOG,
   FURNITURE_ASSETS,
+  FURNITURE_CATEGORIES,
   ROOM_LIMITS,
   addFurniture,
   assetForDeviceKind,
   assignDevice,
   deviceRefKey,
   findDevice,
+  furnitureCategory,
   removeItem,
   renameRoom,
+  resetRoom,
   resizeRoom,
   rotateItem,
   updateItem,
@@ -20,7 +23,7 @@ import {
 } from '../../../../shared/home'
 import { deviceKey } from '../../../../shared/devices'
 import type { Device } from '../../../../shared/types'
-import { PlusIcon, RotateIcon, TrashIcon } from '../../components/Icons'
+import { PlusIcon, ResetIcon, RotateIcon, TrashIcon } from '../../components/Icons'
 
 interface Props {
   /** Rascunho da casa inteira; so vai para o disco ao salvar. */
@@ -75,6 +78,9 @@ function Dimension({ id, label, value, min, max, onChange }: {
   )
 }
 
+/** A confirmacao aparece onde o usuario clicou; rola o painel ate ela inteira. */
+const revealConfirm = (element: HTMLDivElement | null): void => element?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+
 function itemTitle(item: RoomItem, devices: ReadonlyMap<string, Device>): string {
   if (!item.device) return ASSET_CATALOG[item.assetId].label
   return item.alias ?? devices.get(deviceRefKey(item.device))?.name ?? 'Aparelho indisponível'
@@ -83,6 +89,7 @@ function itemTitle(item: RoomItem, devices: ReadonlyMap<string, Device>): string
 export function RoomEditor({ layout, room, devices, selectedItemId, saving, error, onChange, onSelectItem, onSave, onCancel, onDeleteRoom }: Props): React.JSX.Element {
   const [confirmMove, setConfirmMove] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
   const loaded = new Map(devices.map((device) => [deviceKey(device), device]))
   const selected = room.items.find((item) => item.id === selectedItemId)
   const isBase = room.id === layout.baseRoomId
@@ -196,23 +203,44 @@ export function RoomEditor({ layout, room, devices, selectedItemId, saving, erro
 
         <section className="room-editor__section" aria-labelledby="room-furniture-title">
           <h4 id="room-furniture-title">Adicionar móvel</h4>
-          <div className="room-editor__chips">
-            {FURNITURE_ASSETS.map((assetId) => (
-              <button key={assetId} type="button" className="room-chip" onClick={() => {
-                const result = addFurniture(layout, room.id, assetId)
-                onChange(result.layout)
-                if (result.itemId) onSelectItem(result.itemId)
-              }}>
-                <PlusIcon size={13} />{ASSET_CATALOG[assetId].label}
-              </button>
-            ))}
-          </div>
+          {FURNITURE_CATEGORIES.map((category) => (
+            <div key={category.id} className="room-editor__group" role="group" aria-label={category.label}>
+              <span className="field__hint">{category.label}</span>
+              <div className="room-editor__chips">
+                {FURNITURE_ASSETS.filter((assetId) => furnitureCategory(assetId) === category.id).map((assetId) => (
+                  <button key={assetId} type="button" className="room-chip" onClick={() => {
+                    const result = addFurniture(layout, room.id, assetId)
+                    onChange(result.layout)
+                    if (result.itemId) onSelectItem(result.itemId)
+                  }}>
+                    <PlusIcon size={13} />{ASSET_CATALOG[assetId].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
 
-        {!isBase && (
-          <section className="room-editor__section">
-            {confirmDelete ? (
-              <div className="room-editor__confirm" role="group" aria-label="Excluir cômodo">
+        <section className="room-editor__section room-editor__danger">
+          {confirmReset ? (
+            <div ref={revealConfirm} className="room-editor__confirm" role="group" aria-label="Restaurar padrão">
+              <span>Voltar <strong>{room.name}</strong> ao tamanho e aos móveis da sala padrão? Os aparelhos ficam no cômodo, nos lugares padrão. Você ainda pode cancelar a edição.</span>
+              <div>
+                <button type="button" className="btn btn--small" onClick={() => setConfirmReset(false)}>Voltar</button>
+                <button type="button" className="btn btn--small btn--primary" onClick={() => {
+                  onChange(resetRoom(layout, room.id))
+                  onSelectItem(null)
+                  setConfirmReset(false)
+                }}>Restaurar</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="btn btn--ghost" onClick={() => setConfirmReset(true)}>
+              <ResetIcon />Restaurar padrão
+            </button>
+          )}
+          {!isBase && (confirmDelete ? (
+              <div ref={revealConfirm} className="room-editor__confirm" role="group" aria-label="Excluir cômodo">
                 <span>Excluir <strong>{room.name}</strong>? Os aparelhos dele ficam sem cômodo.</span>
                 <div>
                   <button type="button" className="btn btn--small" onClick={() => setConfirmDelete(false)}>Voltar</button>
@@ -223,9 +251,8 @@ export function RoomEditor({ layout, room, devices, selectedItemId, saving, erro
               <button type="button" className="btn btn--ghost btn--danger-text" onClick={() => setConfirmDelete(true)}>
                 <TrashIcon />Excluir cômodo
               </button>
-            )}
-          </section>
-        )}
+            ))}
+        </section>
       </div>
 
       {error && <div className="alert" role="alert"><span>{error}</span></div>}

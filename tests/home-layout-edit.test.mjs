@@ -181,3 +181,41 @@ test('renomear ignora nome vazio', () => {
   assert.equal(home.renameRoom(layout, 'sala', '  ').rooms[0].name, 'Sala viva')
   assert.equal(home.renameRoom(layout, 'sala', ' Estar ').rooms[0].name, 'Estar')
 })
+
+test('restaurar padrão volta tamanho e móveis e mantém nome, aparelhos e apelidos', async (t) => {
+  const parse = await validator(t)
+  let layout = withDevices(lamp('a'), ac('ar'))
+  const a = base(layout).items.find((it) => it.device?.deviceId === 'a')
+  layout = home.renameRoom(layout, 'sala', 'Meu quarto')
+  layout = home.updateItem(layout, 'sala', a.id, { alias: 'Luz da cama', position: [2, 0, 2] })
+  layout = home.resizeRoom(layout, 'sala', { width: 5, depth: 4 })
+  layout = home.addFurniture(layout, 'sala', 'bed-double', ids).layout
+  layout = home.removeItem(layout, 'sala', byAsset(base(layout), 'sofa-l').id)
+
+  const reset = home.resetRoom(layout, 'sala')
+  const room = base(reset)
+  const fresh = home.defaultRoom('sala', 'Meu quarto')
+  assert.equal(room.name, 'Meu quarto')
+  assert.deepEqual(room.dimensions, home.DEFAULT_DIMENSIONS)
+  assert.deepEqual(room.items.filter((it) => !it.device), fresh.items)
+  const lampItem = room.items.find((it) => it.device?.deviceId === 'a')
+  assert.equal(lampItem.id, a.id)
+  assert.equal(lampItem.alias, 'Luz da cama')
+  assert.deepEqual(lampItem.position, home.LIGHT_SPOTS[0])
+  assert.deepEqual(room.items.find((it) => it.device?.deviceId === 'ar').position, home.AC_MOUNTS[0].position)
+  assert.doesNotThrow(() => parse(reset))
+})
+
+test('todos os móveis do catálogo cabem no menor cômodo e passam na validação', async (t) => {
+  const parse = await validator(t)
+  let layout = home.resizeRoom(home.createHomeLayout(), 'sala', { width: 5, depth: 4 })
+  for (const assetId of home.FURNITURE_ASSETS) {
+    const added = home.addFurniture(layout, 'sala', assetId, ids)
+    assert.ok(added.itemId, assetId)
+    layout = home.rotateItem(added.layout, 'sala', added.itemId)
+  }
+  for (const it of base(layout).items) assert.ok(inside(base(layout), it), it.assetId)
+  assert.doesNotThrow(() => parse(layout))
+  assert.ok(home.FURNITURE_ASSETS.length >= 17)
+  assert.ok(home.FURNITURE_ASSETS.every((id) => ['sala', 'quarto', 'mesa'].includes(home.furnitureCategory(id))))
+})
