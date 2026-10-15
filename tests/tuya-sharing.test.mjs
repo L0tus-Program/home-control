@@ -314,3 +314,16 @@ test('cenas: lista por casa com campos do SDK e dispara com homeId e sceneId no 
   assert.deepEqual(seen.at(-1), ['/v1.0/m/scene/ha/trigger', 'POST', undefined, { homeId: '12', sceneId: 'abc' }])
   assert.deepEqual(seen[1][2], { homeId: '12' })
 })
+
+test('cenas: uma casa com erro nao some com as outras; todas falhando, o erro sobe', async (t) => {
+  let failAll = false
+  mockApi(t, ({ path, query }) => {
+    if (path.endsWith('/homes')) return [{ ownerId: 1 }, { ownerId: 2 }]
+    if (failAll || query.homeId === '1') return new Response(JSON.stringify({ success: false, code: 'x' }))
+    return [{ scene_id: 'ok', name: 'Sala', enabled: true }, { scene_id: 'tem espaco', name: 'Ruim' }]
+  })
+  const client = new TuyaSharing(session(), () => {})
+  assert.deepEqual(await client.listScenes(), [{ homeId: '2', sceneId: 'ok', name: 'Sala', enabled: true }])
+  failAll = true
+  await assert.rejects(client.listScenes())
+})

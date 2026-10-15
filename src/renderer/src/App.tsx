@@ -32,6 +32,8 @@ export function App(): React.JSX.Element {
   const [selectedSection, setSelectedSection] = useState<AppSection>('rooms')
   const [showSettings, setShowSettings] = useState(false)
   const [revision, setRevision] = useState(0)
+  // "Atualizar" tambem rele as cenas do app da fabricante.
+  const [sceneReload, setSceneReload] = useState(0)
   const [dismissed, setDismissed] = useState<string | null>(null)
   const initialSelection = useRef(false)
   const isTuya = selectedIntegration === 'tuya'
@@ -172,7 +174,7 @@ export function App(): React.JSX.Element {
                   </div>
                   {connected && (
                     <button type="button" className="btn btn--ghost" disabled={loading}
-                      onClick={() => { setDismissed(null); void refresh(driverId) }}>
+                      onClick={() => { setDismissed(null); setSceneReload((n) => n + 1); void refresh(driverId) }}>
                       <RefreshIcon />{loading ? 'Atualizando…' : 'Atualizar'}
                     </button>
                   )}
@@ -221,7 +223,7 @@ export function App(): React.JSX.Element {
                     ))}
                   </div>
                 )}
-                {isTuya && connected && <ScenesPanel driverId="tuya" revision={revision} />}
+                {isTuya && connected && <ScenesPanel driverId="tuya" reload={revision + sceneReload} />}
               </>
             )}
           </main>

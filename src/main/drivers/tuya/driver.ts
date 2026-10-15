@@ -6,7 +6,7 @@ import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } 
 import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, colorTemperatureCommands, countdownCommand, countdownMaxMinutes, hasCountdown, isControllableBulb, powerCommand, readState } from './bulb'
 import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
 import { mergeStatus, parseTuyaMessage, resolveReport } from './realtime'
-import type { TuyaMqttConfig, TuyaScene } from './sharing'
+import { SCENE_PART, type TuyaMqttConfig, type TuyaScene } from './sharing'
 
 /** Cloud de projeto e compartilhamento QR entregam o mesmo modelo ao driver. */
 export interface TuyaApi {
@@ -193,8 +193,11 @@ export class TuyaDriver implements Driver {
 
   async runScene(id: string): Promise<void> {
     const api = this.requireCloud()
-    const [homeId, sceneId] = id.split(':')
-    if (!api.triggerScene || !homeId || !sceneId || !/^[\w-]{1,64}:[\w-]{1,64}$/.test(id)) throw new DriverError('Cena inválida.')
+    if (!api.triggerScene) throw new DriverError('Cenas só estão disponíveis na conexão por QR Code.')
+    const split = id.indexOf(':')
+    const homeId = id.slice(0, split)
+    const sceneId = id.slice(split + 1)
+    if (split < 0 || !SCENE_PART.test(homeId) || !SCENE_PART.test(sceneId)) throw new DriverError('Cena inválida.')
     await api.triggerScene(homeId, sceneId)
   }
 

@@ -186,13 +186,22 @@ export async function getEnergy(driverId: string, deviceId: string): Promise<Ene
   return driver.getEnergy(deviceId)
 }
 
-/** Cenas de todas as integracoes que tem; uma que falhar nao some com as outras. */
+/** Cenas de todas as integracoes que tem; uma que falhar nao some com as outras, mas se todas falharem o erro sobe. */
 export async function listScenes(): Promise<Scene[]> {
   const scenes: Scene[] = []
+  let failure: unknown = null
+  let tried = 0
   for (const driver of drivers()) {
     if (!driver.listScenes || !driver.isConfigured()) continue
-    scenes.push(...(await driver.listScenes().catch(() => [])))
+    tried++
+    try {
+      scenes.push(...(await driver.listScenes()))
+    } catch (cause) {
+      failure = cause
+      tried--
+    }
   }
+  if (failure && tried === 0) throw failure
   return scenes
 }
 
