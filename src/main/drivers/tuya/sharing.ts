@@ -110,6 +110,16 @@ function localStrategy(value: unknown): TuyaLocalInfo | undefined {
   return { dps }
 }
 
+/** Partes do id de cena aceitas na listagem e na execucao: o que aparece, executa. */
+export const SCENE_PART = /^[^\s:]{1,128}$/
+
+export interface TuyaScene {
+  homeId: string
+  sceneId: string
+  name: string
+  enabled: boolean
+}
+
 export interface TuyaMqttConfig {
   url: string
   clientId: string
@@ -233,6 +243,37 @@ export class TuyaSharing {
       }
     }
     return [...devices.values()]
+  }
+
+  /** Cenas "Toque para executar" de cada casa (tuya-device-sharing-sdk 0.2.15, `scenes.py`). */
+  async listScenes(): Promise<TuyaScene[]> {
+    const scenes: TuyaScene[] = []
+    const homes = await this.listHomeIds()
+    let failure: unknown = null
+    let failed = 0
+    // Uma casa com erro (compartilhada sem permissao, falha passageira) nao some com as outras.
+    for (const homeId of homes) {
+      try {
+        const result = await this.request('GET', '/v1.0/m/scene/ha/home/scenes', { homeId })
+        if (!Array.isArray(result)) throw new DriverError('Lista de cenas inválida retornada pela Tuya.')
+        for (const item of result) {
+          if (!record(item)) continue
+          const id = [item.scene_id, item.sceneId].find((value) => text(value) || (typeof value === 'number' && Number.isSafeInteger(value)))
+          if (id === undefined || typeof item.name !== 'string' || !SCENE_PART.test(String(id)) || !SCENE_PART.test(homeId)) continue
+          scenes.push({ homeId, sceneId: String(id), name: item.name.trim() || 'Cena sem nome', enabled: item.enabled !== false })
+        }
+      } catch (cause) {
+        failed++
+        failure = cause
+      }
+    }
+    if (homes.length > 0 && failed === homes.length) throw failure
+    return scenes
+  }
+
+  async triggerScene(homeId: string, sceneId: string): Promise<void> {
+    const result = await this.request('POST', '/v1.0/m/scene/ha/trigger', undefined, { homeId, sceneId })
+    if (result === false) throw new DriverError('A Tuya não executou a cena. Tente novamente.')
   }
 
   /** Credenciais do MQTT oficial; vencem em `expireTime` segundos. */

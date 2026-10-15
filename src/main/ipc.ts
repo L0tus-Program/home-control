@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DriverStatus, EnergyReport, RealtimeStatus, Result } from '../shared/types'
-import { executeCommand, getEnergy, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
+import type { AppSettings, Command, Device, DriverStatus, EnergyReport, RealtimeStatus, Result, Scene } from '../shared/types'
+import { executeCommand, getEnergy, invalidateDrivers, listAllDevices, listScenes, runScene, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
 import { realtimeSettled, realtimeStatuses, waitForDeviceState } from './realtime/service'
 import { publicDevice } from '../shared/devices'
@@ -137,6 +137,16 @@ export function registerIpc(): void {
       guard(() => {
         if (typeof input?.driverId !== 'string' || typeof input?.deviceId !== 'string') throw new Error('Aparelho invalido.')
         return getEnergy(input.driverId, input.deviceId)
+      })
+  )
+
+  ipcMain.handle('scenes:list', (): Promise<Result<Scene[]>> => guard(listScenes))
+  ipcMain.handle(
+    'scenes:run',
+    (_event, input: { driverId?: unknown; sceneId?: unknown }): Promise<Result<void>> =>
+      guard(() => {
+        if (typeof input?.driverId !== 'string' || typeof input?.sceneId !== 'string' || input.sceneId.length > 160) throw new Error('Cena invalida.')
+        return runScene(input.driverId, input.sceneId)
       })
   )
 

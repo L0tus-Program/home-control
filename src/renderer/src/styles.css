@@ -2377,3 +2377,55 @@ input {
   border-radius: 6px 6px 2px 2px;
   background: linear-gradient(180deg, #5ec8ff, rgba(94, 200, 255, 0.35));
 }
+
+/* Cenas do app da fabricante, abaixo dos aparelhos. */
+.scenes {
+  margin-top: 28px;
+}
+
+.scenes__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.scenes__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 150px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene:hover:not(:disabled) {
+  border-color: rgba(94, 200, 255, 0.45);
+}
+
+.scene:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scene__name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.scene__state {
+  font-size: 12px;
+  color: var(--muted);
+}

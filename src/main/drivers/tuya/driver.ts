@@ -1,12 +1,12 @@
 import type { IClientOptions, MqttClient } from 'mqtt'
-import type { Capability, Command, Device } from '../../../shared/types'
+import type { Capability, Command, Device, Scene } from '../../../shared/types'
 import { secureBrokerUrl, TUYA_BROKER_DOMAINS } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
 import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, colorTemperatureCommands, countdownCommand, countdownMaxMinutes, hasCountdown, isControllableBulb, powerCommand, readState } from './bulb'
 import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
 import { mergeStatus, parseTuyaMessage, resolveReport } from './realtime'
-import type { TuyaMqttConfig } from './sharing'
+import { SCENE_PART, type TuyaMqttConfig, type TuyaScene } from './sharing'
 
 /** Cloud de projeto e compartilhamento QR entregam o mesmo modelo ao driver. */
 export interface TuyaApi {
@@ -18,6 +18,9 @@ export interface TuyaApi {
   /** Só a conexão por QR Code tem tempo real. */
   listHomeIds?(): Promise<string[]>
   getMqttConfig?(): Promise<TuyaMqttConfig>
+  /** Cenas também só pela conexão por QR Code. */
+  listScenes?(): Promise<TuyaScene[]>
+  triggerScene?(homeId: string, sceneId: string): Promise<void>
 }
 
 export const TUYA_DRIVER_ID = 'tuya'
@@ -177,6 +180,25 @@ export class TuyaDriver implements Driver {
       default:
         throw new DriverError(`Comando não suportado pela lâmpada: ${command.type}`)
     }
+  }
+
+  /** Cenas "Toque para executar" do Smart Life; o id junta casa e cena. */
+  async listScenes(): Promise<Scene[]> {
+    const api = this.requireCloud()
+    if (!api.listScenes) return []
+    return (await api.listScenes()).map((scene) => ({
+      id: `${scene.homeId}:${scene.sceneId}`, driverId: this.id, name: scene.name, enabled: scene.enabled
+    }))
+  }
+
+  async runScene(id: string): Promise<void> {
+    const api = this.requireCloud()
+    if (!api.triggerScene) throw new DriverError('Cenas só estão disponíveis na conexão por QR Code.')
+    const split = id.indexOf(':')
+    const homeId = id.slice(0, split)
+    const sceneId = id.slice(split + 1)
+    if (split < 0 || !SCENE_PART.test(homeId) || !SCENE_PART.test(sceneId)) throw new DriverError('Cena inválida.')
+    await api.triggerScene(homeId, sceneId)
   }
 
   /** Tempo real pelo MQTT oficial da conexão por QR Code. */

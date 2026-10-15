@@ -1,4 +1,4 @@
-import type { Command, Device, DeviceEvent, EnergyReport, RealtimeState } from '../../shared/types'
+import type { Command, Device, DeviceEvent, EnergyReport, RealtimeState, Scene } from '../../shared/types'
 
 /**
  * Contrato de uma integracao.
@@ -30,6 +30,10 @@ export interface Driver {
 
   /** Consumo de energia, para aparelhos com a capability `energy`. */
   getEnergy?(deviceId: string): Promise<EnergyReport>
+
+  /** Cenas da conta, quando a integracao permite dispara-las. */
+  listScenes?(): Promise<Scene[]>
+  runScene?(sceneId: string): Promise<void>
 }
 
 export interface RealtimeListener {

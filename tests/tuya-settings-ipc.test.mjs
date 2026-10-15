@@ -47,6 +47,8 @@ async function fixture(t) {
       export const invalidateDrivers = () => { fixture.invalidations++ }
       export const thinqClientFromStore = () => null
       export const getEnergy = async () => ({ days: [] })
+      export const listScenes = async () => []
+      export const runScene = async () => {}
       export const listAllDevices = async (driverId) => {
         fixture.listCalls.push(driverId)
         return { devices: [], statuses: [] }
