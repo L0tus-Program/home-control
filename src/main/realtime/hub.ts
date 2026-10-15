@@ -1,5 +1,11 @@
-import type { DeviceEvent, DeviceEventBatch, RealtimeStatus } from '../../shared/types'
+import type { Device, DeviceEvent, DeviceEventBatch, RealtimeStatus } from '../../shared/types'
 import type { Driver, RealtimeHandle, RealtimeListener } from '../drivers/types'
+
+/** Espera o proximo estado de um aparelho, para confirmar um comando pelo evento. */
+export interface StateWaiter {
+  wait(timeoutMs: number): Promise<Device | null>
+  cancel(): void
+}
 
 export interface HubOutput {
   events(batch: DeviceEventBatch): void
@@ -34,6 +40,7 @@ export class RealtimeHub {
   private queue = new Map<string, Map<string, DeviceEvent>>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private chain: Promise<void> = Promise.resolve()
+  private waiters = new Map<string, Set<(device: Device) => void>>()
 
   constructor(private readonly output: HubOutput, private readonly coalesceMs = COALESCE_MS) {}
 
@@ -58,6 +65,36 @@ export class RealtimeHub {
 
   getStatuses(): Record<string, RealtimeStatus> {
     return { ...this.statuses }
+  }
+
+  /**
+   * Registra a espera antes do comando, para nao perder um evento rapido. Sem
+   * canal ao vivo para o driver, devolve null e o comando confirma por leitura.
+   */
+  waitForState(driverId: string, deviceId: string): StateWaiter | null {
+    if (this.statuses[driverId]?.state !== 'live') return null
+    const key = `${driverId}:${deviceId}`
+    let received: Device | null = null
+    let resolveWait: ((device: Device | null) => void) | null = null
+    const onState = (device: Device): void => {
+      received = device
+      resolveWait?.(device)
+    }
+    let set = this.waiters.get(key)
+    if (!set) this.waiters.set(key, (set = new Set()))
+    set.add(onState)
+    const cancel = (): void => {
+      set.delete(onState)
+      if (set.size === 0 && this.waiters.get(key) === set) this.waiters.delete(key)
+    }
+    return {
+      wait: (timeoutMs) => new Promise<Device | null>((resolve) => {
+        if (received) { cancel(); resolve(received); return }
+        const timer = setTimeout(() => { cancel(); resolve(null) }, timeoutMs)
+        resolveWait = (device) => { clearTimeout(timer); cancel(); resolve(device) }
+      }),
+      cancel
+    }
   }
 
   /** Depois de suspensao o canal pode ter perdido eventos: pede uma releitura. */
@@ -114,6 +151,8 @@ export class RealtimeHub {
     if (!pending) this.queue.set(driverId, (pending = new Map()))
 
     if (event.type === 'state') {
+      // Quem espera confirmar um comando recebe na hora, sem o agrupamento.
+      for (const waiter of [...(this.waiters.get(`${driverId}:${event.device.id}`) ?? [])]) waiter(event.device)
       // O estado completo ja diz se esta online; um aviso anterior fica velho.
       pending.delete(`availability:${event.device.id}`)
       pending.delete(`state:${event.device.id}`)

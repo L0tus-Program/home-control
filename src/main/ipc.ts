@@ -3,7 +3,7 @@ import type { HomeLayout } from '../shared/home'
 import type { AppSettings, Command, Device, DriverStatus, RealtimeStatus, Result } from '../shared/types'
 import { executeCommand, invalidateDrivers, listAllDevices, thinqClientFromStore } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
-import { realtimeStatuses } from './realtime/service'
+import { realtimeStatuses, waitForDeviceState } from './realtime/service'
 import { TuyaCloud } from './drivers/tuya/cloud'
 import { TuyaLogin } from './drivers/tuya/login'
 import { tuyaEndpoint } from '../shared/tuya'
@@ -123,7 +123,7 @@ export function registerIpc(): void {
       _event,
       input: { driverId: string; deviceId: string; command: Command }
     ): Promise<Result<Device>> =>
-      guard(() => executeCommand(input.driverId, input.deviceId, input.command))
+      guard(() => executeCommand(input.driverId, input.deviceId, input.command, waitForDeviceState))
   )
 
   ipcMain.handle('realtime:status', (): Promise<Result<Record<string, RealtimeStatus>>> => guard(realtimeStatuses))

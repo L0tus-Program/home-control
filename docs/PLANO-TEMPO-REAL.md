@@ -1,6 +1,11 @@
 # Estado em tempo real: MQTT da LG e da Tuya
 
-Status: planejado em 15/10/2026. Nada implementado ainda.
+Status: etapas 0 a 4 implementadas em 15/10/2026, na branch `feat/tempo-real`.
+
+- **LG verificada com a conta real:** emite certificado, fica "Ao vivo" e reconecta com o certificado salvo na abertura seguinte. Falta ver um relato de estado de verdade, porque o ar estava desligado durante os testes.
+- **Tuya implementada conforme o SDK** e coberta por testes com broker falso. Falta verificar com a conta conectada pelo QR Code.
+
+**Achado da nuvem real:** assinatura repetida da LG responde **4001** "Already Subscribed Home Push", não o 1207 do SDK; os dois são tratados como sucesso.
 
 Hoje o app só fica sabendo do estado de um aparelho quando pergunta à nuvem (`refresh` e `refreshIfStale` em `useDevices`, e o `getDevice` 900 ms depois de cada comando). Uma mudança feita pelo controle remoto do ar ou pelo app do celular só aparece na maquete na próxima leitura. As duas integrações oferecem um canal MQTT oficial que avisa cada mudança assim que ela acontece. Este plano liga esses canais ao app.
 
@@ -163,6 +168,8 @@ Endpoints novos no `ThinqClient`, `csr.ts`, certificado no cofre, assinaturas po
 **Pronto quando** mudar temperatura, modo ou energia pelo controle remoto do ar aparece no mostrador em até ~2 s, e fechar e reabrir o app reconecta sem emitir outro certificado.
 
 ### Etapa 4: colher os ganhos
+
+Feito: com canal ao vivo, o comando é confirmado pelo primeiro evento do aparelho (espera registrada antes do envio, até 3 s), e só sem evento cai na leitura. Sem tempo real, continua a espera de 900 ms. O `getDevice` da LG usa a ficha em cache.
 
 - Com tempo real ativo, o `executeCommand` deixa de esperar 900 ms fixos e passa a confirmar pelo evento, com `getDevice` só se nada chegar em ~3 s.
 - O `getDevice` da LG deixa de chamar `listDevices` inteiro (usa o cache de aparelhos).

@@ -257,6 +257,9 @@ export class ThinqDriver implements Driver {
 
   async getDevice(deviceId: string): Promise<Device> {
     const client = this.requireClient()
+    // Ficha ja conhecida: so o estado precisa vir da nuvem, sem relistar a conta.
+    const cached = this.known.get(deviceId)?.item
+    if (cached) return this.hydrate(cached)
     const items = (await client.listDevices()) ?? []
     const item = items.find((entry) => entry.deviceId === deviceId)
     if (!item) throw new DriverError('Aparelho nao encontrado na conta LG.')

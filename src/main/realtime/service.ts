@@ -1,7 +1,7 @@
 import { BrowserWindow, powerMonitor } from 'electron'
 import type { Device, DeviceEvent, DeviceEventBatch, RealtimeStatus } from '../../shared/types'
 import { currentDrivers, onDriversChanged } from '../drivers/registry'
-import { RealtimeHub } from './hub'
+import { RealtimeHub, type StateWaiter } from './hub'
 
 /** O tempo real vive no processo principal; as janelas so recebem `Device` traduzido. */
 
@@ -43,6 +43,11 @@ export function startRealtime(): void {
   onDriversChanged(() => void current.restart(currentDrivers))
   powerMonitor.on('resume', () => current.resync())
   void current.restart(currentDrivers)
+}
+
+/** Confirmacao de comando pelo evento do aparelho; null sem canal ao vivo. */
+export function waitForDeviceState(driverId: string, deviceId: string): StateWaiter | null {
+  return hub?.waitForState(driverId, deviceId) ?? null
 }
 
 /** Ha canal para fechar antes de sair? Sem canal, o encerramento segue direto. */

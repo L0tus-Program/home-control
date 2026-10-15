@@ -120,15 +120,36 @@ export async function listAllDevices(onlyDriverId?: string): Promise<{ devices: 
   return { devices, statuses }
 }
 
+/** Com tempo real, quanto esperar o evento que confirma o comando antes de ler. */
+const EVENT_CONFIRM_MS = 3000
+
+export interface CommandWaiter {
+  wait(timeoutMs: number): Promise<Device | null>
+  cancel(): void
+}
+
 export async function executeCommand(
   driverId: string,
   deviceId: string,
-  command: Command
+  command: Command,
+  waitForState?: (driverId: string, deviceId: string) => CommandWaiter | null
 ): Promise<Device> {
   const driver = driverById(driverId)
-  await driver.execute(deviceId, command)
-  // A nuvem da LG leva um instante para refletir o comando no estado.
-  await new Promise((resolve) => setTimeout(resolve, 900))
+  // A espera e registrada antes do envio: o evento pode chegar antes da resposta.
+  const waiter = waitForState?.(driverId, deviceId) ?? null
+  try {
+    await driver.execute(deviceId, command)
+  } catch (cause) {
+    waiter?.cancel()
+    throw cause
+  }
+  if (waiter) {
+    const confirmed = await waiter.wait(EVENT_CONFIRM_MS)
+    if (confirmed) return confirmed
+  } else {
+    // Sem tempo real: a nuvem da LG leva um instante para refletir o comando no estado.
+    await new Promise((resolve) => setTimeout(resolve, 900))
+  }
   return driver.getDevice(deviceId)
 }
 
