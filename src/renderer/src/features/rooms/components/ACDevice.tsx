@@ -1,33 +1,69 @@
 import * as THREE from 'three'
-import { useRef, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import type { Device } from '../../../../../shared/types'
+import { modeLabel } from '../../../labels'
+import { useHoverCursor } from '../hooks'
+import { AC_SCALE } from '../layout'
 
 interface ACDeviceProps {
   device: Device
-  position: [number, number, number]
   isSelected: boolean
   onClick: () => void
 }
 
+/** Chaves nos valores que a ThinQ envia (COOL, HEAT, AIR_DRY...). */
 const MODE_COLORS: Record<string, string> = {
-  cool: '#4fc3f7',
-  heat: '#ff8a65',
-  dry: '#81c784',
-  fan: '#b0bec5',
-  auto: '#9fa8ff'
+  COOL: '#4fc3f7',
+  HEAT: '#ff8a65',
+  AIR_DRY: '#81c784',
+  FAN: '#b0bec5',
+  AUTO: '#9fa8ff'
+}
+const FALLBACK_COLOR = '#9fa8ff'
+
+/** Textura do display, redesenhada quando muda o que ele mostra. */
+function useDisplayTexture(text: string, background: string, color: string): THREE.CanvasTexture {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 208
+    canvas.height = 80
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }, [])
+
+  useEffect(() => {
+    const canvas = texture.image as HTMLCanvasElement
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = background
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = color
+    ctx.font = '700 52px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 3)
+    texture.needsUpdate = true
+  }, [texture, text, background, color])
+
+  useEffect(() => () => texture.dispose(), [texture])
+  return texture
 }
 
-export function ACDevice({ device, position, isSelected, onClick }: ACDeviceProps) {
+/** Corpo do aparelho em unidades do modelo (antes de AC_SCALE). */
+const BODY = { width: 2.3, height: 0.62, depth: 0.42 }
+
+export function ACDevice({ device, isSelected, onClick }: ACDeviceProps) {
   const groupRef = useRef<THREE.Group>(null)
   const flapRef = useRef<THREE.Mesh>(null)
-  const [hovered, setHovered] = useState(false)
+  const { hovered, onPointerOver, onPointerOut } = useHoverCursor()
 
   const isOn = device.state.power
   const temp = device.state.temperature ?? 24
-  const mode = device.state.mode ?? 'cool'
-  const modeColor = MODE_COLORS[mode] ?? '#9fa8ff'
+  const mode = device.state.mode?.toUpperCase()
+  const modeColor = (mode && MODE_COLORS[mode]) || FALLBACK_COLOR
+  const display = useDisplayTexture(isOn ? `${Math.round(temp)}°` : '—', isOn ? modeColor : '#1c2128', isOn ? '#0b0f1a' : '#3a4149')
 
   const particles = useMemo(
     () =>
@@ -45,9 +81,8 @@ export function ACDevice({ device, position, isSelected, onClick }: ACDeviceProp
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime()
     if (groupRef.current) {
-      const target = isSelected ? 1.08 : hovered ? 1.04 : 1
-      const s = THREE.MathUtils.lerp(groupRef.current.scale.x, target, 0.12)
-      groupRef.current.scale.setScalar(s)
+      const target = AC_SCALE * (isSelected ? 1.06 : hovered ? 1.03 : 1)
+      groupRef.current.scale.setScalar(THREE.MathUtils.lerp(groupRef.current.scale.x, target, 0.12))
     }
     if (flapRef.current) {
       flapRef.current.rotation.x = isOn ? Math.PI / 7 + Math.sin(t * 1.8) * 0.06 : 0
@@ -56,7 +91,7 @@ export function ACDevice({ device, position, isSelected, onClick }: ACDeviceProp
       if (!mesh) return
       const p = particles[i]
       const cycle = ((t * p.speed + p.phase) % 3) / 3
-      mesh.position.set(p.x + Math.sin(t + p.phase) * 0.12, -0.35 - cycle * 2.4, p.z + cycle * 0.6)
+      mesh.position.set(p.x + Math.sin(t + p.phase) * 0.12, -0.35 - cycle * 2.4, BODY.depth / 2 + p.z * 0.4 + cycle * 0.9)
       const mat = mesh.material as THREE.MeshBasicMaterial
       mat.opacity = isOn ? Math.sin(cycle * Math.PI) * 0.45 : 0
     })
@@ -64,95 +99,72 @@ export function ACDevice({ device, position, isSelected, onClick }: ACDeviceProp
 
   return (
     <group
-      ref={groupRef}
-      position={position}
       onClick={(e) => {
         e.stopPropagation()
         onClick()
       }}
-      onPointerOver={(e) => {
-        e.stopPropagation()
-        setHovered(true)
-        document.body.style.cursor = 'pointer'
-      }}
-      onPointerOut={() => {
-        setHovered(false)
-        document.body.style.cursor = 'auto'
-      }}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
     >
-      {/* Corpo da unidade */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[2.3, 0.62, 0.42]} />
-        <meshStandardMaterial color="#f4f6f8" roughness={0.35} metalness={0.12} />
-      </mesh>
-
-      {/* Faixa frontal */}
-      <mesh position={[0, 0.06, 0.215]}>
-        <boxGeometry args={[2.0, 0.32, 0.02]} />
-        <meshStandardMaterial color="#e6eaee" roughness={0.28} metalness={0.06} />
-      </mesh>
-
-      {/* Display */}
-      <mesh position={[0.62, 0.06, 0.225]}>
-        <planeGeometry args={[0.52, 0.2]} />
-        <meshBasicMaterial color={isOn ? modeColor : '#1c2128'} toneMapped={false} />
-      </mesh>
-
-      {/* Texto do display */}
-      <Html position={[0.62, 0.06, 0.235]} transform distanceFactor={6} zIndexRange={[10, 0]}>
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            color: isOn ? '#0b0f1a' : '#3a4149',
-            textAlign: 'center',
-            width: '44px',
-            pointerEvents: 'none',
-            userSelect: 'none'
-          }}
-        >
-          {isOn ? `${Math.round(temp)}°` : '—'}
-        </div>
-      </Html>
-
-      {/* Grade + flap */}
-      <mesh position={[0, -0.16, 0.215]}>
-        <boxGeometry args={[1.9, 0.07, 0.02]} />
-        <meshStandardMaterial color="#d7dce1" roughness={0.5} />
-      </mesh>
-      <mesh ref={flapRef} position={[0, -0.24, 0.24]}>
-        <boxGeometry args={[1.9, 0.035, 0.26]} />
-        <meshStandardMaterial color="#c8ced4" roughness={0.4} metalness={0.1} />
-      </mesh>
-
-      {/* Particulas de ar frio/quente */}
-      {particles.map((p, i) => (
-        <mesh
-          key={p.id}
-          ref={(el) => {
-            particleRefs.current[i] = el
-          }}
-          position={[p.x, -0.4, p.z]}
-        >
-          <sphereGeometry args={[0.022, 8, 8]} />
-          <meshBasicMaterial color={modeColor} transparent opacity={0} depthWrite={false} />
+      <group ref={groupRef} scale={AC_SCALE}>
+        {/* Corpo da unidade. Nao projeta sombra: rente a parede, os abajures
+            abaixo desenhariam um cone escuro subindo pela parede. */}
+        <mesh receiveShadow>
+          <boxGeometry args={[BODY.width, BODY.height, BODY.depth]} />
+          <meshStandardMaterial color="#f4f6f8" roughness={0.35} metalness={0.12} />
         </mesh>
-      ))}
 
-      {/* Anel de selecao no piso, abaixo da unidade */}
-      {isSelected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.05, 0.4]}>
-          <ringGeometry args={[1.1, 1.18, 64]} />
-          <meshBasicMaterial color="#5ec8ff" transparent opacity={0.85} />
+        {/* Contorno de selecao: casca um pouco maior, vista por dentro */}
+        {isSelected && (
+          <mesh>
+            <boxGeometry args={[BODY.width + 0.12, BODY.height + 0.12, BODY.depth + 0.06]} />
+            <meshBasicMaterial color="#5ec8ff" side={THREE.BackSide} transparent opacity={0.9} />
+          </mesh>
+        )}
+
+        {/* Faixa frontal */}
+        <mesh position={[0, 0.06, 0.215]}>
+          <boxGeometry args={[2.0, 0.32, 0.02]} />
+          <meshStandardMaterial color="#e6eaee" roughness={0.28} metalness={0.06} />
         </mesh>
-      )}
+
+        {/* Display com a temperatura desenhada nele mesmo */}
+        <mesh position={[0.62, 0.06, 0.226]}>
+          <planeGeometry args={[0.52, 0.2]} />
+          <meshBasicMaterial map={display} toneMapped={false} />
+        </mesh>
+
+        {/* Grade + flap */}
+        <mesh position={[0, -0.16, 0.215]}>
+          <boxGeometry args={[1.9, 0.07, 0.02]} />
+          <meshStandardMaterial color="#d7dce1" roughness={0.5} />
+        </mesh>
+        <mesh ref={flapRef} position={[0, -0.24, 0.24]}>
+          <boxGeometry args={[1.9, 0.035, 0.26]} />
+          <meshStandardMaterial color="#c8ced4" roughness={0.4} metalness={0.1} />
+        </mesh>
+
+        {/* Particulas de ar saindo para a frente da parede */}
+        {particles.map((p, i) => (
+          <mesh
+            key={p.id}
+            ref={(el) => {
+              particleRefs.current[i] = el
+            }}
+            position={[p.x, -0.4, BODY.depth / 2]}
+          >
+            <sphereGeometry args={[0.022, 8, 8]} />
+            <meshBasicMaterial color={modeColor} transparent opacity={0} depthWrite={false} />
+          </mesh>
+        ))}
+      </group>
 
       {/* Tooltip 3D */}
       {(isSelected || hovered) && (
-        <Html position={[0, 0.75, 0]} center distanceFactor={11} zIndexRange={[10, 0]}>
+        <Html position={[0, 0.55, 0]} center distanceFactor={8} zIndexRange={[10, 0]}>
           <div className="room3d-tooltip">
             <strong>{device.name}</strong>
-            <span>{isOn ? `${mode} · ${Math.round(temp)}°C` : 'desligado'}</span>
+            <span>{isOn ? `${device.state.mode ? modeLabel(device.state.mode) : 'Ligado'} · ${Math.round(temp)}°C` : 'desligado'}</span>
           </div>
         </Html>
       )}

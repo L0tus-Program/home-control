@@ -1040,7 +1040,8 @@ input {
 
 /* ── Cômodos 3D ─────────────────────────────────────────────────── */
 .rooms-page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   min-height: 100%;
 }
@@ -1114,7 +1115,9 @@ input {
   grid-template-columns: minmax(0, 1fr) 310px;
   gap: 18px;
   align-items: stretch;
-  min-height: min(660px, calc(100vh - 230px));
+  /* Ocupa o que sobra abaixo do titulo: a pagina cabe na janela sem scroll. */
+  flex: 1;
+  min-height: 380px;
 }
 
 .room-stage-card,
@@ -1642,15 +1645,14 @@ input {
 
 .room-stage-card--3d {
   display: grid;
-  grid-template-rows: auto minmax(420px, 1fr);
-  min-height: 560px;
+  grid-template-rows: auto minmax(260px, 1fr);
 }
 
 .room-canvas-wrap {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 260px;
   border-radius: 0 0 28px 28px;
   overflow: hidden;
 }
@@ -1797,5 +1799,483 @@ input {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+}
+
+/* ── Editor de cômodos ──────────────────────────────────────────── */
+.room-canvas-slot {
+  position: relative;
+  display: grid;
+  min-height: 0;
+}
+
+/* Na edição o painel rola por dentro em vez de esticar a página: a base 0
+   faz a área ocupar só o espaço que sobra abaixo do título. */
+.room-layout--editing {
+  flex: 1 1 0px;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.room-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.room-editor__body {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.room-editor-panel .field label,
+.room-editor__range label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.room-editor-panel .field input {
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.room-editor__range strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.room-editor__range input {
+  width: 100%;
+  accent-color: var(--cool-a);
+}
+
+.room-editor__section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.room-editor__section h4 {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.room-editor__selected {
+  padding: 14px;
+  border: 1px solid rgba(94, 200, 255, 0.3);
+  border-radius: 16px;
+  background: rgba(94, 200, 255, 0.06);
+}
+
+.room-editor__selected h4 {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.room-editor__selected .field__hint {
+  margin-top: 0;
+}
+
+.room-editor__tip {
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 14px;
+}
+
+.room-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.room-editor__actions .btn {
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+
+.room-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.room-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+
+.room-chip:hover,
+.room-chip.is-selected {
+  color: var(--text);
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+}
+
+.room-chip.is-selected {
+  border-color: rgba(94, 200, 255, 0.5);
+}
+
+.room-editor__add {
+  display: grid;
+  gap: 7px;
+}
+
+.room-add-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--cool-a);
+  text-align: left;
+}
+
+.room-add-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+}
+
+.room-add-row span {
+  min-width: 0;
+}
+
+.room-add-row strong,
+.room-add-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-add-row strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.room-add-row small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.room-editor__confirm {
+  display: grid;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 176, 58, 0.35);
+  background: rgba(255, 176, 58, 0.07);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.room-editor__confirm strong {
+  color: var(--text);
+}
+
+.room-editor__confirm div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.room-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.room-editor-panel .alert {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb3b3;
+  font-size: 12.5px;
+}
+
+.btn--small {
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.btn--danger {
+  color: #ffb3b3;
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.5);
+}
+
+.btn--primary.btn--danger,
+.room-editor__confirm .btn--danger {
+  background: rgba(255, 107, 107, 0.18);
+  color: #ffd0d0;
+}
+
+.btn--danger-text {
+  justify-self: start;
+  color: #ff9b9b;
+}
+
+/* Sidebar com cômodos */
+.integration:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.integration:disabled:hover {
+  background: none;
+}
+
+.integration--add {
+  color: var(--muted);
+}
+
+.integration--add .integration__mark {
+  background: none;
+  border-style: dashed;
+  color: var(--cool-a);
+}
+
+.integration--add:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.room-device-list button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.room-unassigned {
+  display: grid;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.room-unassigned ul {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.room-new-modal {
+  width: min(460px, 100%);
+}
+
+.room-new-modal h2 {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.room-new-modal p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 6px 0 18px;
+}
+
+.room-new-modal .field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.room-new-modal .alert {
+  margin-top: 12px;
+  color: #ffb3b3;
+  font-size: 12.5px;
+}
+
+.room-editor__danger {
+  justify-items: start;
+}
+
+.room-editor__danger .room-editor__confirm {
+  justify-self: stretch;
+}
+
+/* ── Paleta de móveis com miniaturas ───────────────────────────── */
+.room-thumb-studio {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 128px;
+  height: 128px;
+  pointer-events: none;
+}
+
+.furniture-palette {
+  display: grid;
+  gap: 10px;
+}
+
+.furniture-palette__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.furniture-palette__tabs button {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.16s, color 0.16s;
+}
+
+.furniture-palette__tabs button:hover {
+  color: var(--text);
+}
+
+.furniture-palette__tabs button.is-active {
+  color: #061018;
+  background: linear-gradient(135deg, var(--cool-a), var(--cool-b));
+}
+
+.furniture-palette__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px;
+}
+
+.room-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 8px 6px 9px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(94, 200, 255, 0.1), transparent 65%),
+    rgba(255, 255, 255, 0.035);
+  cursor: grab;
+  transition: transform 0.18s var(--ease), border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+
+.room-tile:hover {
+  transform: translateY(-3px);
+  border-color: rgba(94, 200, 255, 0.55);
+  box-shadow: 0 10px 24px -12px rgba(68, 224, 255, 0.55);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(94, 200, 255, 0.2), transparent 65%),
+    rgba(255, 255, 255, 0.06);
+}
+
+.room-tile:active {
+  cursor: grabbing;
+  transform: translateY(-1px) scale(0.96);
+}
+
+.room-tile__thumb {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+}
+
+.room-tile__thumb img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45));
+  transition: transform 0.25s var(--ease);
+}
+
+.room-tile:hover .room-tile__thumb img {
+  transform: scale(1.08) rotate(-2deg);
+}
+
+.room-tile__loading {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(110deg, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.05) 70%);
+  background-size: 200% 100%;
+  animation: room-tile-shimmer 1.2s linear infinite;
+}
+
+@keyframes room-tile-shimmer {
+  to { background-position: -200% 0; }
+}
+
+.room-tile__label {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.room-tile__count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(68, 224, 255, 0.16);
+  border: 1px solid rgba(68, 224, 255, 0.4);
+  color: var(--cool-a);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.room-canvas-wrap.is-drop-target {
+  box-shadow: inset 0 0 0 2px rgba(94, 200, 255, 0.75), inset 0 0 60px rgba(94, 200, 255, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-tile,
+  .room-tile__thumb img {
+    transition: none;
+  }
+
+  .room-tile:hover,
+  .room-tile:hover .room-tile__thumb img {
+    transform: none;
+  }
+
+  .room-tile__loading {
+    animation: none;
   }
 }
