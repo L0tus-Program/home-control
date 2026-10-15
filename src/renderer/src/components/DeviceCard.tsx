@@ -1,6 +1,7 @@
 import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
+import { DeviceExtras } from './DeviceExtras'
 import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
@@ -160,7 +161,9 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
         />
       )}
 
-      {(state.currentTemperature !== undefined || state.humidity !== undefined) && (
+      <DeviceExtras device={device} disabled={offline || !state.power || busy} onCommand={onCommand} />
+
+      {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality) && (
         <div className="readings">
           {state.currentTemperature !== undefined && (
             <div>
@@ -172,6 +175,12 @@ export function DeviceCard({ device, busy, onCommand }: Props): React.JSX.Elemen
             <div>
               <div className="reading__label">Umidade</div>
               <div className="reading__value">{Math.round(state.humidity)}%</div>
+            </div>
+          )}
+          {state.airQuality?.pm25 !== undefined && (
+            <div>
+              <div className="reading__label">PM2.5</div>
+              <div className="reading__value">{Math.round(state.airQuality.pm25)}</div>
             </div>
           )}
         </div>

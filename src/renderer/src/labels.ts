@@ -1,3 +1,5 @@
+import type { OptionKey } from '../../shared/types'
+
 /** Tradução dos modos de cada integração para português. */
 
 const MODES: Record<string, string> = {
@@ -33,6 +35,13 @@ function humanize(value: string): string {
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
+const OPTIONS: Record<OptionKey, string> = {
+  powerSave: 'Economia de energia',
+  swingVertical: 'Oscilar na vertical',
+  swingHorizontal: 'Oscilar na horizontal'
+}
+
+export const optionLabel = (key: OptionKey): string => OPTIONS[key]
 export const modeLabel = (value: string): string => MODES[value] ?? humanize(value)
 export const fanLabel = (value: string): string => FAN[value] ?? humanize(value)
 

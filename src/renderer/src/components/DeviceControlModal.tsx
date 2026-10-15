@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { Capability, Command, Device } from '../../../shared/types'
 import { fanLabel, modeLabel, moodFor } from '../labels'
 import { PowerIcon } from './Icons'
+import { DeviceExtras } from './DeviceExtras'
 import { LightControls } from './LightControls'
 import { TemperatureDial } from './TemperatureDial'
 
@@ -125,10 +126,15 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
             format={fanLabel} onPick={(value) => onCommand({ type: 'fan', value })} />
         )}
 
-        {(state.currentTemperature !== undefined || state.humidity !== undefined) && (
+        <DeviceExtras device={device} disabled={disabled || !state.power} onCommand={onCommand} />
+
+        {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality) && (
           <div className="readings">
             {state.currentTemperature !== undefined && <div><div className="reading__label">Ambiente</div><div className="reading__value">{Math.round(state.currentTemperature)}°C</div></div>}
             {state.humidity !== undefined && <div><div className="reading__label">Umidade</div><div className="reading__value">{Math.round(state.humidity)}%</div></div>}
+            {state.airQuality?.pm1 !== undefined && <div><div className="reading__label">PM1</div><div className="reading__value">{Math.round(state.airQuality.pm1)}</div></div>}
+            {state.airQuality?.pm25 !== undefined && <div><div className="reading__label">PM2.5</div><div className="reading__value">{Math.round(state.airQuality.pm25)}</div></div>}
+            {state.airQuality?.pm10 !== undefined && <div><div className="reading__label">PM10</div><div className="reading__value">{Math.round(state.airQuality.pm10)}</div></div>}
           </div>
         )}
       </section>
