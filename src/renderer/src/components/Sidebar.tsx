@@ -30,6 +30,8 @@ function initials(name: string): string {
 function stateInfo(status: DriverStatus): { text: string; variant: string } {
   if (status.error) return { text: 'Revisar conexão', variant: 'error' }
   if (!status.configured) return { text: 'Conectar conta', variant: 'off' }
+  if (status.realtime?.state === 'live') return { text: 'Ao vivo', variant: 'ok' }
+  if (status.realtime?.state === 'unavailable') return { text: 'Atualização manual', variant: 'ok' }
   return { text: 'Configurado', variant: 'ok' }
 }
 
@@ -85,7 +87,7 @@ export function Sidebar({
             <button key={status.id} type="button"
               className={`integration${selectedSection === integration ? ' integration--selected' : ''}`}
               aria-current={selectedSection === integration ? 'page' : undefined}
-              disabled={locked} onClick={() => onSelectSection(integration)} title={title ?? status.error}>
+              disabled={locked} onClick={() => onSelectSection(integration)} title={title ?? status.error ?? status.realtime?.error}>
               <span className="integration__mark" aria-hidden="true">{status.label.slice(0, 2).toUpperCase()}</span>
               <span>
                 <span className="integration__name">{status.label}</span>

@@ -38,6 +38,7 @@ async function fixture(t) {
         on: () => {}
       }
       export const shell = { openExternal: async () => {} }
+      export const powerMonitor = { on: () => {} }
       export const BrowserWindow = { fromWebContents: () => null }
     `,
     './drivers/registry': `

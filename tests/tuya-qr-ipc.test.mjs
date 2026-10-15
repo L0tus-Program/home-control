@@ -42,6 +42,7 @@ async function fixture(t) {
       export const ipcMain = { handle: (channel, handler) => context.handlers.set(channel, handler), on: () => {} }
       export const BrowserWindow = { fromWebContents: () => null }
       export const shell = { openExternal: async () => {} }
+      export const powerMonitor = { on: () => {} }
     `,
     './drivers/registry': `
       const context = globalThis.__tuyaQrIpc

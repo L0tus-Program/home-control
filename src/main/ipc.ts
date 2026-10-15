@@ -1,8 +1,9 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import type { HomeLayout } from '../shared/home'
-import type { AppSettings, Command, Device, DriverStatus, Result } from '../shared/types'
+import type { AppSettings, Command, Device, DriverStatus, RealtimeStatus, Result } from '../shared/types'
 import { executeCommand, invalidateDrivers, listAllDevices } from './drivers/registry'
 import { loadHomeLayout, placeDevicesInBaseRoom, saveHomeLayout } from './home-layout-store'
+import { realtimeStatuses } from './realtime/service'
 import { TuyaCloud } from './drivers/tuya/cloud'
 import { TuyaLogin } from './drivers/tuya/login'
 import { tuyaEndpoint } from '../shared/tuya'
@@ -119,6 +120,8 @@ export function registerIpc(): void {
     ): Promise<Result<Device>> =>
       guard(() => executeCommand(input.driverId, input.deviceId, input.command))
   )
+
+  ipcMain.handle('realtime:status', (): Promise<Result<Record<string, RealtimeStatus>>> => guard(realtimeStatuses))
 
   // O layout chega do renderer como dado nao confiavel; o store valida tudo.
   ipcMain.handle('home-layout:get', (): Promise<Result<HomeLayout>> => guard(loadHomeLayout))

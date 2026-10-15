@@ -67,9 +67,22 @@ function drivers(): Driver[] {
   return cache
 }
 
+let changed: (() => void) | null = null
+
+/** Os drivers em uso agora; recriados depois de `invalidateDrivers`. */
+export function currentDrivers(): Driver[] {
+  return drivers()
+}
+
+/** Quem precisa acompanhar a troca de drivers (o tempo real). */
+export function onDriversChanged(listener: (() => void) | null): void {
+  changed = listener
+}
+
 /** Chamar sempre que a configuracao mudar, para os drivers pegarem o token novo. */
 export function invalidateDrivers(): void {
   cache = null
+  changed?.()
 }
 
 export function driverById(id: string): Driver {

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
+import { startRealtime, stopRealtime } from './realtime/service'
 
 const isDev = !app.isPackaged
 const PROFILE_NAME = 'home-control'
@@ -58,15 +59,30 @@ function createWindow(): BrowserWindow {
 const captureMode = isDev && process.env.HOME_CONTROL_REALTIME_CAPTURE === '1'
 
 if (captureMode) {
-  // Diagnostico do tempo real: sem janela, grava e encerra.
+  // Diagnostico do tempo real: sem janela, grava e encerra. Nunca junto com o
+  // app aberto: os dois disputariam a sessao Tuya e o client id da LG.
+  if (!app.requestSingleInstanceLock()) {
+    console.error('Feche o Home Control antes de rodar a captura de tempo real.')
+    app.exit(1)
+  }
   void app.whenReady().then(async () => {
-    const { runRealtimeCapture } = await import('./realtime/capture')
     const seconds = Number(process.env.HOME_CONTROL_REALTIME_CAPTURE_SECONDS) || 60
-    await runRealtimeCapture(join(app.getPath('userData'), 'realtime-capture.jsonl'), {
-      durationMs: seconds * 1000,
-      probe: process.env.HOME_CONTROL_REALTIME_PROBE === '1'
-    }).catch((cause) => console.error(cause))
-    app.quit()
+    // Rede presa nao pode deixar um Electron invisivel rodando para sempre.
+    const watchdog = setTimeout(() => { console.error('Captura excedeu o tempo.'); app.exit(1) }, (seconds + 120) * 1000)
+    try {
+      const { runRealtimeCapture } = await import('./realtime/capture')
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      await runRealtimeCapture(join(app.getPath('userData'), `realtime-capture-${stamp}.jsonl`), {
+        durationMs: seconds * 1000,
+        probe: process.env.HOME_CONTROL_REALTIME_PROBE === '1'
+      })
+    } catch (cause) {
+      console.error(cause)
+      process.exitCode = 1
+    } finally {
+      clearTimeout(watchdog)
+      app.quit()
+    }
   })
 } else if (!app.requestSingleInstanceLock()) {
   // Uma instancia so: abrir de novo traz a janela existente para frente.
@@ -82,10 +98,20 @@ if (captureMode) {
   void app.whenReady().then(() => {
     registerIpc()
     createWindow()
+    startRealtime()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
+  })
+
+  // Fecha os canais MQTT antes de sair, sem segurar o encerramento.
+  let quitting = false
+  app.on('before-quit', (event) => {
+    if (quitting) return
+    quitting = true
+    event.preventDefault()
+    void stopRealtime().finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {
