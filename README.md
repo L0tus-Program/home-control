@@ -28,6 +28,10 @@ ou no ar-condicionado e controla de verdade, em tempo real.
   liga/desliga, brilho e cor, sem cadastrar projeto cloud nem chave de desenvolvedor.
 - **🧊 Cômodos 3D** — uma maquete interativa da sala renderizada com three.js. Os aparelhos
   aparecem no espaço, acendem, mudam de cor e reagem ao estado real; clicar abre os controles.
+- **⚡ Estado em tempo real** pelos canais MQTT oficiais da LG e da Tuya (conexão por QR Code):
+  mudanças feitas pelo controle remoto ou pelo app do celular aparecem na hora, e a barra
+  lateral mostra "Ao vivo". Sem o canal, o app segue atualizando por leitura, como antes.
+  Detalhes em [docs/PLANO-TEMPO-REAL.md](docs/PLANO-TEMPO-REAL.md).
 - **🔐 Credenciais cifradas** no cofre do sistema operacional (DPAPI no Windows) via
   `safeStorage` — nunca em texto puro, nunca no código.
 - **🧩 Arquitetura de drivers** — a interface nunca fala o protocolo de nenhum fabricante;
