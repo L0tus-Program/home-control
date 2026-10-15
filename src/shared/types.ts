@@ -7,6 +7,9 @@
 
 export type DeviceKind = 'air-conditioner' | 'light' | 'unknown'
 
+/** Timer que roda no proprio aparelho: ligar ou desligar depois de um tempo. */
+export type TimerAction = 'on' | 'off'
+
 /** Ajustes liga/desliga do aparelho, alem da energia. */
 export type OptionKey = 'powerSave' | 'swingVertical' | 'swingHorizontal'
 
@@ -21,6 +24,8 @@ export type Capability =
   /** Tom do branco: 0 e o mais quente, 100 o mais frio. */
   | { kind: 'colorTemperature' }
   | { kind: 'option'; key: OptionKey }
+  /** `actions`: o que o timer sabe fazer; `maxMinutes`: o maior prazo aceito. */
+  | { kind: 'timer'; actions: TimerAction[]; maxMinutes: number }
 
 export type CapabilityKind = Capability['kind']
 
@@ -44,6 +49,8 @@ export interface DeviceState {
   /** Tom do branco, 0 (quente) a 100 (frio). */
   colorTemperature?: number
   options?: Partial<Record<OptionKey, boolean>>
+  /** Minutos que faltam para cada timer programado; 0 = programado, prazo desconhecido. */
+  timer?: Partial<Record<TimerAction, number>>
   /** Particulas no ar (ug/m3), quando o aparelho tem sensor. */
   airQuality?: { pm1?: number; pm25?: number; pm10?: number }
   humidity?: number
@@ -69,6 +76,8 @@ export type Command =
   | { type: 'color'; value: ColorState }
   | { type: 'colorTemperature'; value: number }
   | { type: 'option'; key: OptionKey; value: boolean }
+  /** `minutes` null cancela o timer. */
+  | { type: 'timer'; action: TimerAction; minutes: number | null }
 
 export interface DriverStatus {
   id: string

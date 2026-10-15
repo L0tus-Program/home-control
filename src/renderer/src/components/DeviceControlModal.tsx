@@ -126,7 +126,7 @@ export function DeviceControlModal({ device, busy, onClose, onCommand }: Props):
             format={fanLabel} onPick={(value) => onCommand({ type: 'fan', value })} />
         )}
 
-        <DeviceExtras device={device} disabled={disabled || !state.power} onCommand={onCommand} />
+        <DeviceExtras device={device} disabled={disabled} onCommand={onCommand} />
 
         {(state.currentTemperature !== undefined || state.humidity !== undefined || state.airQuality) && (
           <div className="readings">

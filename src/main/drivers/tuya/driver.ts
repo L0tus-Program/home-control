@@ -3,7 +3,7 @@ import type { Capability, Command, Device } from '../../../shared/types'
 import { secureBrokerUrl, TUYA_BROKER_DOMAINS } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
-import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, colorTemperatureCommands, isControllableBulb, powerCommand, readState } from './bulb'
+import { brightnessCommand, bulbCapabilities, bulbModes, colorCommands, colorTemperatureCommands, countdownCommand, countdownMaxMinutes, hasCountdown, isControllableBulb, powerCommand, readState } from './bulb'
 import type { TuyaApiDevice, TuyaFunction, TuyaStatusItem, TuyaCommand } from './cloud'
 import { mergeStatus, parseTuyaMessage, resolveReport } from './realtime'
 import type { TuyaMqttConfig } from './sharing'
@@ -125,6 +125,7 @@ export class TuyaDriver implements Driver {
     if (caps.brightness) capabilities.push({ kind: 'brightness', min: 1, max: 100 })
     if (caps.color) capabilities.push({ kind: 'color' })
     if (caps.colorTemperature) capabilities.push({ kind: 'colorTemperature' })
+    if (hasCountdown(status, functions)) capabilities.push({ kind: 'timer', actions: ['off', 'on'], maxMinutes: countdownMaxMinutes(functions) })
     if (modes.length > 1) capabilities.push({ kind: 'mode', options: modes })
     return {
       id: info.id, driverId: this.id, name: info.name?.trim() || 'Lâmpada Tuya',
@@ -149,6 +150,17 @@ export class TuyaDriver implements Driver {
       case 'color': {
         const status = await cloud.getStatus(deviceId)
         await cloud.sendCommands(deviceId, colorCommands(status, command.value, functions))
+        return
+      }
+      case 'timer': {
+        if (!functions.some((item) => item.code === 'countdown_1')) throw new DriverError('Esta lâmpada não tem timer.')
+        // O contador inverte a energia: "desligar" so faz sentido acesa, "ligar" so apagada.
+        const status = await cloud.getStatus(deviceId)
+        const power = status.find((item) => item.code === 'switch_led')?.value === true
+        if (command.minutes !== null && (command.action === 'off') !== power) {
+          throw new DriverError(power ? 'A lâmpada já está acesa.' : 'A lâmpada já está apagada.')
+        }
+        await cloud.sendCommands(deviceId, [countdownCommand(command.minutes, functions)])
         return
       }
       case 'colorTemperature': {
@@ -235,6 +247,11 @@ export class TuyaDriver implements Driver {
         const { updates, unresolved } = resolveReport(message.items, entry.info, functions)
         if (unresolved) reread(message.devId)
         if (updates.length === 0) return
+        // A energia mudou e o contador não veio: ele pode ter acabado de zerar. Confirma pela nuvem.
+        const countdown = entry.status.find((item) => item.code === 'countdown_1')?.value
+        if (updates.some((item) => item.code === 'switch_led') && !updates.some((item) => item.code === 'countdown_1') && typeof countdown === 'number' && countdown > 0) {
+          reread(message.devId)
+        }
         // Quem relata estado está online.
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }

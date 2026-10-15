@@ -1,5 +1,5 @@
 import type { IClientOptions, MqttClient } from 'mqtt'
-import type { Capability, Command, Device, DeviceState, OptionKey } from '../../../shared/types'
+import type { Capability, Command, Device, DeviceState, OptionKey, TimerAction } from '../../../shared/types'
 import { LG_BROKER_DOMAINS, secureBrokerUrl } from '../../realtime/broker'
 import { MqttLink } from '../../realtime/mqtt-link'
 import { DriverError, type Driver, type RealtimeHandle, type RealtimeListener } from '../types'
@@ -54,6 +54,17 @@ interface AcLayout {
   targets: Partial<Record<TargetKey, RangeValues>>
   /** Ajustes liga/desliga que o perfil declara como graváveis. */
   options: OptionKey[]
+  /** Timers relativos (`timer.relativeHourToStart/Stop`) que o modelo aceita. */
+  timers: TimerAction[]
+}
+
+/** A LG programa timers relativos em horas e minutos; 24 h cobre o uso comum. */
+const LG_TIMER_MAX_MINUTES = 24 * 60
+
+/** Campos do recurso `timer` para cada acao. */
+const TIMER_FIELDS: Record<TimerAction, { hour: string; minute: string; flag: string }> = {
+  on: { hour: 'relativeHourToStart', minute: 'relativeMinuteToStart', flag: 'relativeStartTimer' },
+  off: { hour: 'relativeHourToStop', minute: 'relativeMinuteToStop', flag: 'relativeStopTimer' }
 }
 
 /** Onde cada ajuste mora no perfil e no estado da ThinQ Connect. */
@@ -134,13 +145,24 @@ function readLayout(profile: Record<string, unknown>): AcLayout {
     return isWritable(prop) && Boolean(prop?.mode?.includes('r')) && prop?.type === 'boolean' && accepted.includes(true) && accepted.includes(false)
   })
 
+  const timer = asRecord(property.timer)
+  // So entra o timer que o app consegue ver (flag SET legivel) e cancelar (UNSET gravavel).
+  const timers = (['on', 'off'] as TimerAction[]).filter((action) => {
+    const fields = TIMER_FIELDS[action]
+    const flag = descriptor(timer[fields.flag])
+    const readable = Array.isArray(flag?.value?.r) && flag.value.r.includes('SET')
+    return isWritable(descriptor(timer[fields.hour])) && isWritable(descriptor(timer[fields.minute])) &&
+      readable && writableOptions(flag).includes('UNSET')
+  })
+
   return {
     modes: writableOptions(jobMode),
     fanKey,
     fanOptions: writableOptions(fan),
     tempResource: resource,
     targets,
-    options
+    options,
+    timers
   }
 }
 
@@ -172,8 +194,25 @@ function readState(raw: Record<string, unknown>, layout: AcLayout): DeviceState 
         : undefined,
     humidity: numeric(asRecord(raw.airQualitySensor).humidity),
     ...readOptions(raw, layout),
+    ...readTimers(raw, layout),
     ...readAirQuality(asRecord(raw.airQualitySensor))
   }
+}
+
+/** `relativeStopTimer: SET` com horas e minutos restantes; sem os numeros, prazo desconhecido (0). */
+function readTimers(raw: Record<string, unknown>, layout: AcLayout): Pick<DeviceState, 'timer'> {
+  const timer = asRecord(raw.timer)
+  const result: Partial<Record<TimerAction, number>> = {}
+  for (const action of layout.timers) {
+    const fields = TIMER_FIELDS[action]
+    if (timer[fields.flag] !== 'SET') continue
+    const hour = timer[fields.hour]
+    const minute = timer[fields.minute]
+    result[action] = typeof hour === 'number' || typeof minute === 'number'
+      ? Math.max(0, (typeof hour === 'number' ? hour : 0) * 60 + (typeof minute === 'number' ? minute : 0))
+      : 0
+  }
+  return Object.keys(result).length > 0 ? { timer: result } : {}
 }
 
 /** Sensor de particulas: so os valores que o modelo publica. */
@@ -235,6 +274,7 @@ function buildCapabilities(layout: AcLayout): Capability[] {
   if (layout.modes.length > 0) capabilities.push({ kind: 'mode', options: layout.modes })
   if (layout.fanOptions.length > 0) capabilities.push({ kind: 'fan', options: layout.fanOptions })
   for (const key of layout.options) capabilities.push({ kind: 'option', key })
+  if (layout.timers.length > 0) capabilities.push({ kind: 'timer', actions: layout.timers, maxMinutes: LG_TIMER_MAX_MINUTES })
   return capabilities
 }
 
@@ -419,6 +459,28 @@ export class ThinqDriver implements Driver {
         return
       }
 
+      case 'timer': {
+        if (!layout.timers.includes(command.action)) throw new DriverError('Este modelo nao tem esse timer.')
+        const fields = TIMER_FIELDS[command.action]
+        if (command.minutes === null) {
+          await client.control(deviceId, { timer: { [fields.flag]: 'UNSET' } })
+          return
+        }
+        const minutes = Math.round(command.minutes)
+        if (!Number.isFinite(minutes) || minutes < 1 || minutes > LG_TIMER_MAX_MINUTES) throw new DriverError('Prazo de timer invalido.')
+        // Ligar programado so com o ar desligado; desligar programado so com ele ligado.
+        const power = asRecord(asRecord(await client.getState(deviceId)).operation).airConOperationMode === 'POWER_ON'
+        if ((command.action === 'off') !== power) {
+          throw new DriverError(power ? 'O ar ja esta ligado.' : 'O ar ja esta desligado.')
+        }
+        const hour = Math.floor(minutes / 60)
+        const minute = minutes % 60
+        // Como o SDK oficial: no desligar, minuto zero vai omitido.
+        const body = command.action === 'off' && minute === 0 ? { [fields.hour]: hour } : { [fields.hour]: hour, [fields.minute]: minute }
+        await client.control(deviceId, { timer: body })
+        return
+      }
+
       case 'option': {
         if (!layout.options.includes(command.key)) throw new DriverError('Este modelo nao tem esse ajuste.')
         const [resourceName, field] = OPTION_PATHS[command.key]
@@ -555,6 +617,7 @@ export class ThinqDriver implements Driver {
           return
         }
         credentialFailures = 0
+        if ('operation' in message.report && !('timer' in message.report) && 'timer' in entry.raw) reread(message.deviceId)
         entry.raw = mergeReport(entry.raw, message.report)
         entry.rev = ++this.revision
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })

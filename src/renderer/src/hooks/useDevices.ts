@@ -9,6 +9,11 @@ function applyOptimistic(device: Device, command: Command): Device {
   switch (command.type) {
     case 'power':
       state.power = command.value
+      // O contador da lampada continua e passa a ser de ligar (ou de desligar).
+      if (device.driverId === 'tuya' && state.timer) {
+        const left = state.timer.off ?? state.timer.on
+        state.timer = left === undefined ? undefined : { [command.value ? 'off' : 'on']: left }
+      }
       break
     case 'temperature':
       state.temperature = command.value
@@ -28,6 +33,14 @@ function applyOptimistic(device: Device, command: Command): Device {
     case 'option':
       state.options = { ...state.options, [command.key]: command.value }
       break
+    case 'timer': {
+      // Na lampada o contador e unico: programar substitui o anterior.
+      const timer = device.driverId === 'tuya' ? {} : { ...state.timer }
+      if (command.minutes === null) delete timer[command.action]
+      else timer[command.action] = command.minutes
+      state.timer = Object.keys(timer).length > 0 ? timer : undefined
+      break
+    }
     case 'colorTemperature':
       // O tom do branco tira a lampada do modo cor (quando ela tem modos).
       state.colorTemperature = command.value

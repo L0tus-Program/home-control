@@ -2279,3 +2279,29 @@ input {
     animation: none;
   }
 }
+
+/* Timer programado: texto e Cancelar na mesma linha. */
+.timer__active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timer__active button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.timer__active button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
