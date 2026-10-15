@@ -369,6 +369,8 @@ const FATAL_CODES = new Set(['1103', '1218', '1302', '1303', '1307'])
 /** A assinatura de eventos expira (4464 h); o SDK oficial renova uma vez por dia. */
 const RESUBSCRIBE_MS = 24 * 60 * 60 * 1000
 const REREAD_DELAY_MS = 1500
+/** Relatos guardados por ar; uma leitura da nuvem leva segundos, nao centenas de relatos. */
+const REPORT_HISTORY_LIMIT = 32
 const REREAD_MIN_INTERVAL_MS = 10_000
 const RESUBSCRIBE_AFTER_CHANGE_MS = 5000
 /** Assinatura que falhou (cota, rede) e tentada de novo bem antes da renovacao diaria. */
@@ -402,7 +404,8 @@ export class ThinqDriver implements Driver {
   private readonly energy = new Map<string, { day: string; until: number; report: Promise<EnergyReport> }>()
   private readonly energyProfileTried = new Map<string, number>()
   /** Ultimo estado bruto e ficha de cada ar; base para os relatos parciais do MQTT. */
-  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number }>()
+  /** `history`: relatos recentes, para reaplicar sobre uma leitura da nuvem que comecou antes deles. */
+  private readonly known = new Map<string, { item: ThinqDeviceListItem; raw: Record<string, unknown>; rev: number; at: number; history?: Array<{ rev: number; report: Record<string, unknown> }> }>()
   /** Contador que so cresce: a protecao contra leitura atrasada sobrevive a remocoes do cache. */
   private revision = 0
 
@@ -482,12 +485,15 @@ export class ThinqDriver implements Driver {
     const layout = await this.layoutFor(item.deviceId)
     const raw = asRecord(await this.requireClient().getState(item.deviceId))
     const current = this.known.get(item.deviceId)
-    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+    // Relatos do MQTT chegaram durante a leitura: a leitura e a base (corrige o que se perdeu)
+    // e eles, mais novos, vao por cima.
     if (current && current.rev !== rev) {
+      const newer = (current.history ?? []).filter((entry) => entry.rev > rev)
       current.item = item
+      current.raw = newer.reduce((base, entry) => mergeReport(base, entry.report), raw)
       return this.build(item, layout, current.raw)
     }
-    this.known.set(item.deviceId, { item, raw, rev, at: Date.now() })
+    this.known.set(item.deviceId, { item, raw, rev, at: Date.now(), history: current?.history })
     return this.build(item, layout, raw)
   }
 
@@ -777,6 +783,7 @@ export class ThinqDriver implements Driver {
         if ('operation' in message.report && !('timer' in message.report) && 'timer' in entry.raw) reread(message.deviceId)
         entry.raw = mergeReport(entry.raw, message.report)
         entry.rev = ++this.revision
+        entry.history = [...(entry.history ?? []), { rev: entry.rev, report: message.report }].slice(-REPORT_HISTORY_LIMIT)
         listener.event({ type: 'state', device: this.build(entry.item, layout, entry.raw) })
       },
       status: (state, error) => {

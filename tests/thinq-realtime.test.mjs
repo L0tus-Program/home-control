@@ -204,3 +204,31 @@ test('queda de rede nao reemite o certificado salvo', async (t) => {
   assert.equal(saves.length, 0)
   assert.equal(client.calls.filter((c) => c === 'register').length, 1, 'registro uma vez por sessao')
 })
+
+test('LG: leitura que comecou antes de um relato usa a leitura como base e reaplica o relato', async (t) => {
+  const broker = fakeBroker()
+  let release = null
+  let slow = false
+  const client = fakeClient({
+    getState: async () => {
+      if (slow) await new Promise((resolve) => { release = resolve })
+      return slow
+        ? { ...initialState(), airConJobMode: { currentJobMode: 'HEAT' }, operation: { airConOperationMode: 'POWER_OFF' } }
+        : initialState()
+    }
+  })
+  const out = listen()
+  const stored = { clientId: 'cliente-1', privateKeyPem: 'K', certificatePem: 'C', subscriptions: ['t'] }
+  const driver = new ThinqDriver(client, { loadCredentials: () => stored, connect: broker.connect })
+  const handle = await driver.watch(out.listener)
+  t.after(() => handle.stop())
+  await until(() => out.statuses.includes('live'))
+  slow = true
+  const reading = driver.getDevice('ar')
+  await until(() => release !== null)
+  broker.last().deliver('t', { pushType: 'DEVICE_STATUS', deviceId: 'ar', report: { operation: { airConOperationMode: 'POWER_ON' } } })
+  release()
+  const device = await reading
+  assert.equal(device.state.power, true, 'relato mais novo vence')
+  assert.equal(device.state.mode, 'HEAT', 'o resto vem da leitura')
+})

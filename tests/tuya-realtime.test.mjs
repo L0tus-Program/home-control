@@ -179,3 +179,27 @@ test('leitura REST que comecou antes de um relato nao desfaz o relato', async (t
   broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'bright_value_v2', value: 1000 }] } })
   assert.equal(out.events.at(-1).device.state.power, true, 'o cache manteve o relato')
 })
+
+test('leitura REST e a base e os relatos chegados durante ela vao por cima', async (t) => {
+  const broker = fakeBroker()
+  let release
+  const api = sharingFixture({
+    getDevice: async (id) => {
+      await new Promise((resolve) => { release = resolve })
+      // A nuvem traz um brilho que o canal perdeu e a energia ainda antiga.
+      return { id, category: 'dj', name: 'Sala', online: true, status: [{ code: 'switch_led', value: false }, { code: 'bright_value_v2', value: 1000 }, { code: 'work_mode', value: 'white' }] }
+    }
+  })
+  const driver = new TuyaDriver(api, broker.connect)
+  const out = listen()
+  const handle = await driver.watch(out.listener)
+  t.after(() => handle.stop())
+  await until(() => out.statuses.includes('live'))
+  const reading = driver.getDevice('luz')
+  await tick(5)
+  broker.last().deliver('t', { protocol: 4, data: { devId: 'luz', status: [{ code: 'switch_led', value: true }] } })
+  release()
+  const device = await reading
+  assert.equal(device.state.power, true, 'relato mais novo vence')
+  assert.equal(device.state.brightness, 100, 'o resto vem da leitura')
+})

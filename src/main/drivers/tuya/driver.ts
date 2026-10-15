@@ -40,7 +40,12 @@ interface Known {
   rev: number
   /** Quando entrou no cache; uma listagem mais velha não o remove. */
   at: number
+  /** Relatos recentes, para reaplicar sobre uma leitura da nuvem que começou antes deles. */
+  history?: Array<{ rev: number; updates: TuyaStatusItem[] }>
 }
+
+/** Relatos guardados por lâmpada; uma leitura da nuvem leva segundos, não centenas de relatos. */
+const HISTORY_LIMIT = 32
 
 /** Integração oficial Tuya Cloud, independente de LG ThinQ. */
 export class TuyaDriver implements Driver {
@@ -110,13 +115,17 @@ export class TuyaDriver implements Driver {
     const functions = await this.getFunctions(info.id)
     const fresh = { ...info, status: undefined }
     const current = this.known.get(info.id)
-    // Um relato do MQTT chegou durante a leitura: ele é mais novo que ela.
+    // Relatos do MQTT chegaram durante a leitura: a leitura é a base (corrige o que se perdeu)
+    // e eles, mais novos, vão por cima.
     if (current && current.rev !== rev) {
+      const newer = (current.history ?? []).filter((entry) => entry.rev > rev)
+      const merged = newer.reduce((base, entry) => mergeStatus(base, entry.updates), status)
       current.info = { ...fresh, online: current.info.online }
-      return this.build(current.info, current.status, functions)
+      current.status = merged
+      return this.build(current.info, merged, functions)
     }
     const device = this.build(info, status, functions)
-    if (device) this.known.set(info.id, { info: fresh, status, rev, at: Date.now() })
+    if (device) this.known.set(info.id, { info: fresh, status, rev, at: Date.now(), history: current?.history })
     return device
   }
 
@@ -278,6 +287,7 @@ export class TuyaDriver implements Driver {
         entry.status = mergeStatus(entry.status, updates)
         entry.info = { ...entry.info, online: true }
         entry.rev = ++this.revision
+        entry.history = [...(entry.history ?? []), { rev: entry.rev, updates }].slice(-HISTORY_LIMIT)
         const device = this.build(entry.info, entry.status, functions)
         if (device) listener.event({ type: 'state', device })
       },
