@@ -25,7 +25,7 @@ function lg(state, controls = []) {
 
 test('LG: timers do perfil viram capability; estado SET vira minutos restantes', async () => {
   const [idle] = await new ThinqDriver(lg({ operation: { airConOperationMode: 'POWER_ON' }, timer: { relativeStartTimer: 'UNSET', relativeStopTimer: 'UNSET' } })).listDevices()
-  assert.deepEqual(idle.capabilities.find((cap) => cap.kind === 'timer'), { kind: 'timer', actions: ['on', 'off'], maxMinutes: 1440 })
+  assert.deepEqual(idle.capabilities.find((cap) => cap.kind === 'timer'), { kind: 'timer', actions: ['on', 'off'], maxMinutes: 1439 })
   assert.equal('timer' in idle.state, false)
 
   const [running] = await new ThinqDriver(lg({ operation: { airConOperationMode: 'POWER_ON' }, timer: { relativeStopTimer: 'SET', relativeHourToStop: 1, relativeMinuteToStop: 20 } })).listDevices()

@@ -52,7 +52,7 @@ test('sensor de particulas: so os valores publicados; modelo sem sensor nao ganh
   assert.equal('airQuality' in plain.state, false)
   const withSensor = client()
   withSensor.getState = async () => ({ ...state, airQualitySensor: { PM2: 12, PM10: 30, humidity: 55, odor: 'x' } })
-  withSensor.getProfile = async () => ({ property: { ...profile.property, airQualitySensor: { PM2: { type: 'number', mode: ['r'] }, PM10: { type: 'number', mode: ['r'] } } } })
+  withSensor.getProfile = async () => ({ property: { ...profile.property, airQualitySensor: { PM2: { type: 'number', mode: ['r'] }, PM10: { type: 'number', mode: ['r'] }, humidity: { type: 'number', mode: ['r'] } } } })
   const [device] = await new ThinqDriver(withSensor).listDevices()
   assert.deepEqual(device.state.airQuality, { pm25: 12, pm10: 30 })
   assert.equal(device.state.humidity, 55)

@@ -70,7 +70,7 @@ export function ScenesPanel({ driverId, reload }: { driverId: string; reload: nu
       <section className="scenes" aria-label="Cenas">
         <h2 className="scenes__title">Cenas do Smart Life</h2>
         <p className="card__meta">
-          A Tuya não liberou nenhuma cena “Toque para executar” para esta conexão. Automações e cenas de outras casas não aparecem aqui.{' '}
+          Nenhuma cena disponível. Só aparecem as cenas “Toque para executar” da conta conectada pelo QR Code; automações não aparecem aqui.{' '}
           <button type="button" className="btn btn--ghost" onClick={() => setAttempt((n) => n + 1)}>Verificar de novo</button>
         </p>
       </section>

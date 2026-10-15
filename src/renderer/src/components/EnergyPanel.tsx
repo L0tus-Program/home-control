@@ -16,6 +16,7 @@ export function EnergyPanel({ device }: { device: Device }): React.JSX.Element |
   const supported = device.capabilities.some((cap) => cap.kind === 'energy')
   const [report, setReport] = useState<EnergyReport | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!supported) return
@@ -28,14 +29,18 @@ export function EnergyPanel({ device }: { device: Device }): React.JSX.Element |
       else setError(result.error)
     }, () => { if (alive) setError('Não consegui ler o consumo agora.') })
     return () => { alive = false }
-  }, [supported, device.driverId, device.id])
+  }, [supported, device.driverId, device.id, attempt])
 
   if (!supported) return null
   const peak = Math.max(1, ...(report?.days.map((day) => day.wh) ?? [1]))
   return (
     <div className="control energy">
       <div className="control__label">Consumo de energia</div>
-      {error && <p className="card__meta">{error}</p>}
+      {error && (
+        <p className="card__meta">{error}{' '}
+          <button type="button" className="btn btn--ghost" onClick={() => setAttempt((n) => n + 1)}>Tentar de novo</button>
+        </p>
+      )}
       {!report && !error && <p className="card__meta">Carregando…</p>}
       {report && (
         <>

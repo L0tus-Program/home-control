@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Capability, Command, Device, OptionKey, TimerAction } from '../../../shared/types'
 import { optionLabel } from '../labels'
 
@@ -19,8 +19,10 @@ export function durationLabel(minutes: number): string {
 }
 
 /** Prazo livre, em minutos, alem dos atalhos. */
-function CustomTimer({ max, disabled, onSet }: { max: number; disabled: boolean; onSet: (minutes: number) => void }): React.JSX.Element {
+function CustomTimer({ max, disabled, action, onSet }: { max: number; disabled: boolean; action: TimerAction; onSet: (minutes: number) => void }): React.JSX.Element {
   const [value, setValue] = useState('')
+  // Prazo digitado para desligar nao vira, sem querer, prazo para ligar.
+  useEffect(() => setValue(''), [action])
   const minutes = Number(value)
   const valid = Number.isInteger(minutes) && minutes >= 1 && minutes <= max
   return (
@@ -64,7 +66,7 @@ function TimerControl({ device, timer, disabled, onCommand }: Props & { timer: E
           ))}
         </div>
       )}
-      {offer && <CustomTimer max={timer.maxMinutes} disabled={disabled} onSet={(minutes) => onCommand({ type: 'timer', action, minutes })} />}
+      {offer && <CustomTimer max={timer.maxMinutes} disabled={disabled} action={action} onSet={(minutes) => onCommand({ type: 'timer', action, minutes })} />}
     </div>
   )
 }
